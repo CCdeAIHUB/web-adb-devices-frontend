@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore, type AdbScannedDevice } from '@/stores/devices'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 
 const { t } = useI18n()
 const devices = useDeviceStore()
@@ -90,7 +90,24 @@ function localizeAdbError(result: AdbCommandResult) {
     return '未检测到 ADB，请先下载或手动导入 ADB 后再连接设备。'
   }
 
-  return result.stderr || result.stdout || 'ADB 命令执行失败。'
+  const detail = result.stderr || result.stdout || 'ADB 命令执行失败。'
+  return detail.startsWith('连接错误') ? detail : `连接错误：${detail}`
+}
+
+function localizeApiError(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    return error.message || fallback
+  }
+
+  return fallback
+}
+
+function formatCommandSuccess(prefix: string, stdout: string, suffix = '') {
+  if (stdout) {
+    return `${prefix} 原始信息：${stdout}`
+  }
+
+  return `${prefix}${suffix}`
 }
 
 async function loadEnvironment() {
@@ -128,8 +145,12 @@ async function runPair() {
       method: 'POST',
       body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value }),
     })
-    commandMessage.value = result.success ? result.stdout || '配对命令已执行。' : localizeAdbError(result)
+    commandMessage.value = result.success
+      ? formatCommandSuccess('配对命令已执行。', result.stdout, '请使用无线调试主页面显示的 IP 和连接端口继续连接。')
+      : localizeAdbError(result)
     await scanAdb()
+  } catch (error) {
+    commandMessage.value = localizeApiError(error, '连接错误：无线配对请求发送失败。')
   } finally {
     commandRunning.value = false
   }
@@ -143,8 +164,10 @@ async function runConnect() {
       method: 'POST',
       body: JSON.stringify({ host: tcpipHost.value, port: tcpipPort.value }),
     })
-    commandMessage.value = result.success ? result.stdout || '连接命令已执行。' : localizeAdbError(result)
+    commandMessage.value = result.success ? formatCommandSuccess('连接命令已执行。', result.stdout) : localizeAdbError(result)
     await scanAdb()
+  } catch (error) {
+    commandMessage.value = localizeApiError(error, '连接错误：无线连接请求发送失败。')
   } finally {
     commandRunning.value = false
   }
