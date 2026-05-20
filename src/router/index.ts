@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 import DashboardView from '@/views/DashboardView.vue'
 import LoginView from '@/views/LoginView.vue'
 import DevicesView from '@/views/DevicesView.vue'
+import DeviceDetailView from '@/views/DeviceDetailView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import AgentView from '@/views/AgentView.vue'
 import LogsView from '@/views/LogsView.vue'
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     { path: '/', name: 'dashboard', component: DashboardView },
     { path: '/devices', name: 'devices', component: DevicesView },
+    { path: '/devices/:deviceId', name: 'device-detail', component: DeviceDetailView },
     { path: '/agent', name: 'agent', component: AgentView },
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/logs', name: 'logs', component: LogsView },

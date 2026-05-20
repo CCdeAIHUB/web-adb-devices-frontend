@@ -5,7 +5,12 @@ export interface DeviceRecord {
   deviceId: string
   temporaryAdbSerial?: string
   model?: string
+  androidVersion?: string
   apkVersion?: string
+  screenWidth: number
+  screenHeight: number
+  orientation: string
+  ipAddress?: string
   displayState: 'Offline' | 'Unauthorized' | 'Matched' | 'Online' | 'Protected' | 'Updating'
   internalState: string
   updatedAt: string

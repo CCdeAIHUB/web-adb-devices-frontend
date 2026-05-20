@@ -272,7 +272,9 @@ onUnmounted(stopScanTimer)
           </tr>
           <tr v-for="device in devices.devices" :key="device.deviceId" class="border-t border-slate-100 dark:border-slate-800">
             <td class="px-4 py-3">
-              <div class="font-medium">{{ device.model || device.deviceId }}</div>
+              <RouterLink class="font-medium text-sky-700 hover:underline dark:text-sky-300" :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }">
+                {{ device.model || device.deviceId }}
+              </RouterLink>
               <div class="mt-1 text-xs text-slate-500">{{ device.deviceId }}</div>
             </td>
             <td class="px-4 py-3">
