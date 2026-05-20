@@ -15,6 +15,9 @@ const tcpipHost = ref('')
 const tcpipPort = ref('5555')
 const commandRunning = ref(false)
 const commandMessage = ref('')
+const environmentLoading = ref(false)
+const adbInstalling = ref(false)
+const environment = ref<EnvironmentSelfCheck | null>(null)
 let scanTimer: ReturnType<typeof window.setInterval> | undefined
 
 interface AdbCommandResult {
@@ -22,6 +25,36 @@ interface AdbCommandResult {
   stdout: string
   stderr: string
   errorCode?: string
+}
+
+interface AdbMirrorProbe {
+  name: string
+  url: string
+  available: boolean
+  latencyMs: number
+  latest: boolean
+  note?: string
+}
+
+interface EnvironmentSelfCheck {
+  adb: {
+    exists: boolean
+    path: string
+    rid: string
+    supported: boolean
+    manualInstall: {
+      targetDirectory: string
+      extractFrom: string
+      executableName: string
+    }
+    mirrors: AdbMirrorProbe[]
+  }
+}
+
+interface AdbInstallResult {
+  ok: boolean
+  code?: string
+  message?: string
 }
 
 const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device'))
@@ -52,6 +85,41 @@ async function scanAdb() {
   await devices.scanAdb()
 }
 
+function localizeAdbError(result: AdbCommandResult) {
+  if (result.errorCode === 'ERR_ADB_MISSING') {
+    return '未检测到 ADB，请先下载或手动导入 ADB 后再连接设备。'
+  }
+
+  return result.stderr || result.stdout || 'ADB 命令执行失败。'
+}
+
+async function loadEnvironment() {
+  environmentLoading.value = true
+  try {
+    environment.value = await api<EnvironmentSelfCheck>('/api/system/environment/self-check')
+  } finally {
+    environmentLoading.value = false
+  }
+}
+
+async function installAdb() {
+  adbInstalling.value = true
+  commandMessage.value = ''
+  try {
+    const result = await api<AdbInstallResult>('/api/system/resources/adb/install', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    commandMessage.value = result.ok ? 'ADB 已下载并安装到私有工具目录。' : result.message || 'ADB 下载失败，请检查网络或手动导入。'
+    await loadEnvironment()
+    if (result.ok) {
+      await scanAdb()
+    }
+  } finally {
+    adbInstalling.value = false
+  }
+}
+
 async function runPair() {
   commandRunning.value = true
   commandMessage.value = ''
@@ -60,7 +128,7 @@ async function runPair() {
       method: 'POST',
       body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value }),
     })
-    commandMessage.value = result.success ? result.stdout || '配对命令已执行。' : result.stderr || '配对失败。'
+    commandMessage.value = result.success ? result.stdout || '配对命令已执行。' : localizeAdbError(result)
     await scanAdb()
   } finally {
     commandRunning.value = false
@@ -75,7 +143,7 @@ async function runConnect() {
       method: 'POST',
       body: JSON.stringify({ host: tcpipHost.value, port: tcpipPort.value }),
     })
-    commandMessage.value = result.success ? result.stdout || '连接命令已执行。' : result.stderr || '连接失败。'
+    commandMessage.value = result.success ? result.stdout || '连接命令已执行。' : localizeAdbError(result)
     await scanAdb()
   } finally {
     commandRunning.value = false
@@ -85,10 +153,13 @@ async function runConnect() {
 async function openConnect(mode: 'usb' | 'pair' | 'tcpip' = 'usb') {
   activeMode.value = mode
   showConnect.value = true
-  await scanAdb()
+  await loadEnvironment()
+  if (environment.value?.adb.exists) {
+    await scanAdb()
+  }
   stopScanTimer()
   scanTimer = window.setInterval(() => {
-    if (showConnect.value) {
+    if (showConnect.value && environment.value?.adb.exists) {
       devices.scanAdb().catch(() => undefined)
     }
   }, 5000)
@@ -119,14 +190,14 @@ onUnmounted(stopScanTimer)
       </div>
       <div class="flex gap-2">
         <button
-          class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900"
+          class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium transition-all duration-300 hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900"
           @click="scanAdb"
         >
           <span class="icon-[solar--refresh-outline] size-5" />
           <span>{{ devices.scanning ? '扫描中' : '扫描 ADB' }}</span>
         </button>
         <button
-          class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white hover:bg-sky-600"
+          class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600"
           @click="openConnect('usb')"
         >
           <span class="icon-[solar--add-circle-outline] size-5" />
@@ -206,10 +277,47 @@ onUnmounted(stopScanTimer)
           </button>
         </div>
 
+        <div
+          v-if="environment && !environment.adb.exists"
+          class="border-b border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="font-medium">未检测到 ADB，当前无法扫描、配对或连接设备。</div>
+              <div class="mt-1 text-xs opacity-90">
+                目标位置：{{ environment.adb.path }}。联网时可自动选择延迟最低的可用源；离线时请手动下载 Platform-Tools，并把 {{ environment.adb.manualInstall?.extractFrom ?? 'platform-tools' }} 目录内容放入 {{ environment.adb.manualInstall?.targetDirectory ?? '私有 ADB 工具目录' }}。
+              </div>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <a
+                  v-for="mirror in environment.adb.mirrors"
+                  :key="mirror.url"
+                  class="rounded-md bg-white/70 px-2.5 py-1 text-xs underline-offset-2 hover:underline dark:bg-slate-900/70"
+                  :href="mirror.url"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {{ mirror.name }}{{ mirror.available ? ` · ${mirror.latencyMs}ms` : mirror.note ? ` · ${mirror.note}` : '' }}
+                </a>
+              </div>
+              <div v-if="!environment.adb.supported" class="mt-2 text-xs">
+                当前平台 {{ environment.adb.rid }} 没有官方独立 ADB zip。Linux arm64 建议使用系统软件源安装 android-sdk-platform-tools，或手动导入可信 adb。
+              </div>
+            </div>
+            <button
+              class="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-amber-500 px-3 text-sm font-medium text-white transition-all duration-300 hover:bg-amber-600 disabled:opacity-60"
+              :disabled="adbInstalling || environmentLoading || !environment.adb.supported"
+              @click="installAdb"
+            >
+              <span class="icon-[solar--download-minimalistic-outline] size-4" />
+              <span>{{ adbInstalling ? '下载中' : '自动下载 ADB' }}</span>
+            </button>
+          </div>
+        </div>
+
         <div class="grid min-h-0 flex-1 lg:grid-cols-[260px_1fr]">
           <aside class="border-b border-slate-200 p-3 dark:border-slate-800 lg:border-b-0 lg:border-r">
             <button
-              class="mb-2 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm"
+              class="mb-2 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300"
               :class="activeMode === 'usb' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800'"
               @click="activeMode = 'usb'"
             >
@@ -217,7 +325,7 @@ onUnmounted(stopScanTimer)
               <span>USB ADB</span>
             </button>
             <button
-              class="mb-2 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm"
+              class="mb-2 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300"
               :class="activeMode === 'pair' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800'"
               @click="activeMode = 'pair'"
             >
@@ -225,7 +333,7 @@ onUnmounted(stopScanTimer)
               <span>Android 11+ 无线配对</span>
             </button>
             <button
-              class="flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm"
+              class="flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300"
               :class="activeMode === 'tcpip' ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'hover:bg-slate-100 dark:hover:bg-slate-800'"
               @click="activeMode = 'tcpip'"
             >
@@ -250,7 +358,7 @@ onUnmounted(stopScanTimer)
                 <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                   <div class="mb-3 flex items-center justify-between">
                     <h3 class="font-semibold">USB ADB 状态</h3>
-                    <button class="inline-flex h-9 items-center gap-2 rounded-md bg-sky-500 px-3 text-sm text-white" @click="scanAdb">
+                    <button class="inline-flex h-9 items-center gap-2 rounded-md bg-sky-500 px-3 text-sm text-white transition-all duration-300" @click="scanAdb">
                       <span class="icon-[solar--refresh-outline] size-4" />
                       <span>{{ devices.scanning ? '扫描中' : '刷新' }}</span>
                     </button>
@@ -310,7 +418,7 @@ onUnmounted(stopScanTimer)
                   <input v-model="pairPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对端口" />
                   <input v-model="pairCode" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对码" />
                 </div>
-                <button class="mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white disabled:opacity-60" :disabled="commandRunning" @click="runPair">
+                <button class="mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 disabled:opacity-60" :disabled="commandRunning || !environment?.adb.exists" @click="runPair">
                   <span class="icon-[solar--wi-fi-router-outline] size-5" />
                   <span>开始配对</span>
                 </button>
@@ -326,7 +434,7 @@ onUnmounted(stopScanTimer)
                     <input v-model="tcpipHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="手机 WiFi IP，例如 192.168.1.25" />
                     <input v-model="tcpipPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="端口" />
                   </div>
-                  <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white disabled:opacity-60" :disabled="commandRunning" @click="runConnect">
+                  <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 disabled:opacity-60" :disabled="commandRunning || !environment?.adb.exists" @click="runConnect">
                     <span class="icon-[solar--link-circle-outline] size-5" />
                     <span>连接</span>
                   </button>

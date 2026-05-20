@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 type FieldType = 'text' | 'password' | 'number' | 'select' | 'toggle'
 
@@ -116,6 +116,25 @@ const sections: SettingSection[] = [
   },
 ]
 
+const defaultValues: Record<string, string> = Object.fromEntries(
+  sections.flatMap((section) =>
+    section.fields.map((field) => {
+      if (field.key === 'ui.language') return [field.key, 'zh']
+      if (field.key === 'ui.theme') return [field.key, 'system']
+      if (field.key === 'devices.autoInstallApk') return [field.key, 'true']
+      if (field.key === 'devices.autoLaunchApk') return [field.key, 'true']
+      if (field.key === 'devices.keepAlive') return [field.key, 'true']
+      if (field.key === 'resources.autoDownloadAdb') return [field.key, 'true']
+      if (field.key === 'resources.autoDownloadApk') return [field.key, 'true']
+      if (field.key === 'resources.verifySignature') return [field.key, 'true']
+      if (field.key === 'devices.wirelessPairTimeout') return [field.key, '15']
+      if (field.type === 'select') return [field.key, field.options?.[0]?.value ?? '']
+      if (field.type === 'toggle') return [field.key, 'false']
+      return [field.key, '']
+    }),
+  ),
+)
+
 const selectedKey = ref(sections[0].key)
 const selected = computed(() => sections.find((section) => section.key === selectedKey.value) ?? sections[0])
 const values = reactive<Record<string, string>>({})
@@ -124,21 +143,36 @@ const saving = ref(false)
 const savedAt = ref('')
 
 function fieldValue(key: string) {
-  return values[key] ?? ''
+  return values[key] ?? defaultValues[key] ?? ''
 }
 
 function setFieldValue(key: string, value: string | boolean) {
   values[key] = typeof value === 'boolean' ? String(value) : value
 }
 
+function applyAppearance() {
+  const language = fieldValue('ui.language') || 'zh'
+  const theme = fieldValue('ui.theme') || 'system'
+  locale.value = language
+  localStorage.setItem('wad_locale', language)
+  localStorage.setItem('wad_theme', theme)
+
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && prefersDark))
+}
+
 async function loadSettings() {
   const response = await api<SettingsResponse>('/api/settings')
+  Object.entries(defaultValues).forEach(([key, value]) => {
+    values[key] = value
+  })
   Object.entries(response.values ?? {}).forEach(([key, value]) => {
-    values[key] = value ?? ''
+    values[key] = value ?? defaultValues[key] ?? ''
   })
   runtime.value = response.runtime ?? {}
   values['network.adminPort'] = String(runtime.value.adminPort ?? values['network.adminPort'] ?? '6333')
   values['network.apkWsPort'] = String(runtime.value.apkWsPort ?? values['network.apkWsPort'] ?? '6334')
+  applyAppearance()
 }
 
 async function saveSettings() {
@@ -150,8 +184,9 @@ async function saveSettings() {
       body: JSON.stringify({ values: payload }),
     })
     Object.entries(response.values ?? {}).forEach(([key, value]) => {
-      values[key] = value ?? ''
+      values[key] = value ?? defaultValues[key] ?? ''
     })
+    applyAppearance()
     savedAt.value = new Date().toLocaleTimeString()
   } finally {
     saving.value = false
@@ -159,6 +194,7 @@ async function saveSettings() {
 }
 
 onMounted(loadSettings)
+watch(() => [values['ui.language'], values['ui.theme']], applyAppearance)
 </script>
 
 <template>
@@ -166,7 +202,7 @@ onMounted(loadSettings)
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">设置</h1>
       <button
-        class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white hover:bg-sky-600 disabled:opacity-60"
+        class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60"
         :disabled="saving"
         @click="saveSettings"
       >
@@ -176,11 +212,11 @@ onMounted(loadSettings)
     </div>
 
     <div class="grid gap-4 lg:grid-cols-[240px_1fr]">
-      <nav class="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900 lg:block lg:space-y-1">
+      <nav class="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 lg:block lg:space-y-1">
         <button
           v-for="section in sections"
           :key="section.key"
-          class="flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-800"
+          class="flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-800"
           :class="selectedKey === section.key ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'text-slate-600 dark:text-slate-300'"
           @click="selectedKey = section.key"
         >
@@ -189,7 +225,7 @@ onMounted(loadSettings)
         </button>
       </nav>
 
-      <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+      <div class="rounded-lg border border-slate-200 bg-white transition-all duration-300 dark:border-slate-800 dark:bg-slate-900">
         <div class="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div class="flex items-center gap-3">
             <span :class="[selected.icon, 'size-6 text-sky-500']" />
@@ -207,7 +243,7 @@ onMounted(loadSettings)
 
             <select
               v-if="field.type === 'select'"
-              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-950"
               :value="fieldValue(field.key)"
               :disabled="field.readonly"
               @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)"
@@ -218,20 +254,20 @@ onMounted(loadSettings)
             <button
               v-else-if="field.type === 'toggle'"
               type="button"
-              class="flex h-8 w-14 items-center rounded-full p-1 transition"
+              class="flex h-8 w-14 items-center rounded-full p-1 transition-all duration-300"
               :class="fieldValue(field.key) === 'true' ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-700'"
               :disabled="field.readonly"
               @click="setFieldValue(field.key, fieldValue(field.key) !== 'true')"
             >
               <span
-                class="size-6 rounded-full bg-white shadow transition"
+                class="size-6 rounded-full bg-white shadow transition-all duration-300"
                 :class="fieldValue(field.key) === 'true' ? 'translate-x-6' : ''"
               />
             </button>
 
             <input
               v-else
-              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950"
+              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-950"
               :type="field.type"
               :value="fieldValue(field.key)"
               :placeholder="field.placeholder"
