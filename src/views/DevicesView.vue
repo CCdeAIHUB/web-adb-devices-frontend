@@ -21,6 +21,9 @@ const environment = ref<EnvironmentSelfCheck | null>(null)
 const editingDeviceId = ref('')
 const metadataSaving = ref(false)
 const metadataForm = ref({ remark: '', group: '', tags: '' })
+const searchText = ref('')
+const groupFilter = ref('all')
+const tagFilter = ref('all')
 let scanTimer: ReturnType<typeof window.setInterval> | undefined
 
 interface AdbCommandResult {
@@ -64,10 +67,23 @@ interface AdbInstallResult {
   message?: string
 }
 
-const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device'))
-const unauthorizedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'unauthorized'))
+const isWirelessAdb = (serial: string) => serial.includes(':') || serial.includes('_adb-tls-connect')
+const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && !isWirelessAdb(device.serial)))
+const connectedWireless = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && isWirelessAdb(device.serial)))
+const unauthorizedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'unauthorized' && !isWirelessAdb(device.serial)))
 const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'offline'))
 const hasAnyScan = computed(() => Boolean(devices.adbScan))
+const groups = computed(() => [...new Set(devices.devices.map((device) => device.group).filter(Boolean))] as string[])
+const tags = computed(() => [...new Set(devices.devices.flatMap((device) => device.tags ?? []))])
+const filteredDevices = computed(() => {
+  const keyword = searchText.value.trim().toLowerCase()
+  return devices.devices.filter((device) => {
+    const matchesGroup = groupFilter.value === 'all' || (device.group ?? '') === groupFilter.value
+    const matchesTag = tagFilter.value === 'all' || (device.tags ?? []).includes(tagFilter.value)
+    const haystack = [device.model, device.remark, device.deviceId, device.temporaryAdbSerial].filter(Boolean).join(' ').toLowerCase()
+    return matchesGroup && matchesTag && (!keyword || haystack.includes(keyword))
+  })
+})
 
 function stateClass(state: string) {
   if (state === 'Online') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
@@ -92,8 +108,8 @@ async function scanAdb() {
   await devices.scanAdb()
 }
 
-function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type } }))
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info', target?: string) {
+  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type, target } }))
 }
 
 function beginEditDevice(device: DeviceRecord) {
@@ -104,6 +120,8 @@ function beginEditDevice(device: DeviceRecord) {
     tags: (device.tags ?? []).join(', '),
   }
 }
+
+const editingDevice = computed(() => devices.devices.find((item) => item.deviceId === editingDeviceId.value))
 
 function cancelEditDevice() {
   editingDeviceId.value = ''
@@ -189,16 +207,19 @@ async function installAdb() {
 
 async function installBundledApk(deviceId: string) {
   commandRunning.value = true
-  commandMessage.value = ''
   try {
     const result = await api<AdbCommandResult>(`/api/devices/${encodeURIComponent(deviceId)}/apps/install-bundled`, {
       method: 'POST',
       body: JSON.stringify({}),
     })
-    commandMessage.value = result.success ? '内置 APK 已安装到设备。' : localizeAdbError(result)
+    if (result.success) {
+      notify('内置 APK 已安装到设备。', 'success')
+    } else {
+      notify(localizeAdbError(result), 'error', '/help#apk-cert')
+    }
     await refreshAll()
   } catch (error) {
-    commandMessage.value = localizeApiError(error, '内置 APK 安装请求发送失败。')
+    notify(localizeApiError(error, '内置 APK 安装请求发送失败。'), 'error', '/help#install-apk')
   } finally {
     commandRunning.value = false
   }
@@ -280,20 +301,32 @@ onUnmounted(stopScanTimer)
       </div>
       <div class="flex gap-2">
         <button
-          class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium transition-all duration-300 hover:border-sky-300 dark:border-slate-700 dark:bg-slate-900"
+          class="glass-button"
           @click="scanAdb"
         >
-          <span class="icon-[solar--refresh-outline] size-5" />
+          <span class="icon-[solar--refresh-bold-duotone] size-5" />
           <span>{{ devices.scanning ? '扫描中' : '扫描 ADB' }}</span>
         </button>
         <button
-          class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600"
+          class="glass-button glass-button-primary"
           @click="openConnect('usb')"
         >
-          <span class="icon-[solar--add-circle-outline] size-5" />
+          <span class="icon-[solar--add-circle-bold-duotone] size-5" />
           <span>添加设备</span>
         </button>
       </div>
+    </div>
+
+    <div class="glass-panel mb-4 grid gap-3 p-3 lg:grid-cols-[1fr_180px_180px]">
+      <input v-model="searchText" class="glass-input" placeholder="搜索设备名称、备注、ADB serial" />
+      <select v-model="groupFilter" class="glass-input glass-select">
+        <option value="all">全部分组</option>
+        <option v-for="group in groups" :key="group" :value="group">{{ group }}</option>
+      </select>
+      <select v-model="tagFilter" class="glass-input glass-select">
+        <option value="all">全部标签</option>
+        <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
+      </select>
     </div>
 
     <div class="mb-4 grid gap-3 md:grid-cols-3">
@@ -303,6 +336,7 @@ onUnmounted(stopScanTimer)
           <span class="icon-[solar--usb-outline] size-5 text-sky-500" />
         </div>
         <strong class="mt-2 block text-2xl">{{ connectedUsb.length }}</strong>
+        <div class="mt-1 text-xs text-slate-500">无线 ADB：{{ connectedWireless.length }}</div>
       </div>
       <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div class="flex items-center justify-between">
@@ -334,12 +368,12 @@ onUnmounted(stopScanTimer)
           </tr>
         </thead>
         <tbody>
-          <tr v-if="devices.devices.length === 0" class="border-t border-slate-100 dark:border-slate-800">
+          <tr v-if="filteredDevices.length === 0" class="border-t border-slate-100 dark:border-slate-800">
             <td colspan="7" class="px-4 py-10 text-center text-slate-500">
-              <button class="text-sky-600 hover:underline dark:text-sky-300" @click="openConnect('usb')">添加第一台设备</button>
+              <button class="text-sky-600 hover:underline dark:text-sky-300" @click="openConnect('usb')">{{ devices.devices.length === 0 ? '添加第一台设备' : '没有符合筛选的设备' }}</button>
             </td>
           </tr>
-          <tr v-for="device in devices.devices" :key="device.deviceId" class="border-t border-slate-100 dark:border-slate-800">
+          <tr v-for="device in filteredDevices" :key="device.deviceId" class="border-t border-slate-100 dark:border-slate-800">
             <td class="px-4 py-3">
               <RouterLink class="font-medium text-sky-700 hover:underline dark:text-sky-300" :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }">
                 {{ device.remark || device.model || device.deviceId }}
@@ -347,14 +381,7 @@ onUnmounted(stopScanTimer)
               <div class="mt-1 text-xs text-slate-500">{{ device.deviceId }}</div>
             </td>
             <td class="px-4 py-3">
-              <div v-if="editingDeviceId === device.deviceId" class="grid min-w-[220px] gap-2">
-                <input v-model="metadataForm.remark" class="glass-input h-9" placeholder="自定义备注" />
-                <div class="grid grid-cols-2 gap-2">
-                  <input v-model="metadataForm.group" class="glass-input h-9" placeholder="分组" />
-                  <input v-model="metadataForm.tags" class="glass-input h-9" placeholder="标签，逗号分隔" />
-                </div>
-              </div>
-              <div v-else>
+              <div>
                 <div class="text-sm text-slate-700 dark:text-slate-200">{{ device.group || '未分组' }}</div>
                 <div class="mt-1 flex max-w-[260px] flex-wrap gap-1">
                   <span v-for="tag in device.tags ?? []" :key="tag" class="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700 dark:bg-sky-950 dark:text-sky-200">{{ tag }}</span>
@@ -371,19 +398,15 @@ onUnmounted(stopScanTimer)
             <td class="px-4 py-3">{{ device.temporaryAdbSerial || '-' }}</td>
             <td class="px-4 py-3 text-slate-500">{{ new Date(device.updatedAt).toLocaleString() }}</td>
             <td class="px-4 py-3 text-right">
-              <div v-if="editingDeviceId === device.deviceId" class="flex justify-end gap-2">
-                <button class="glass-button h-9 px-3" :disabled="metadataSaving" @click="saveDeviceMetadata(device.deviceId)">保存</button>
-                <button class="glass-button h-9 px-3" @click="cancelEditDevice">取消</button>
-              </div>
-              <div v-else class="flex justify-end gap-2">
-                <button class="rounded-xl p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" title="编辑设备信息" @click="beginEditDevice(device)">
-                  <span class="icon-[solar--pen-new-square-outline] size-5" />
+              <div class="flex justify-end gap-2">
+                <button class="icon-button text-slate-600 dark:text-slate-300" title="编辑设备信息" @click="beginEditDevice(device)">
+                  <span class="icon-[solar--pen-new-square-bold-duotone] size-5" />
                 </button>
-                <button class="rounded-xl p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950" title="删除设备" @click="deleteDevice(device)">
-                  <span class="icon-[solar--trash-bin-trash-outline] size-5" />
+                <button class="icon-button text-rose-600" title="删除设备" @click="deleteDevice(device)">
+                  <span class="icon-[solar--trash-bin-trash-bold-duotone] size-5" />
                 </button>
               </div>
-            </td>
+             </td>
           </tr>
         </tbody>
       </table>
@@ -580,6 +603,35 @@ onUnmounted(stopScanTimer)
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="editingDevice" class="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4 backdrop-blur-sm">
+      <div class="glass-panel w-full max-w-xl p-5">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="font-semibold">编辑设备信息</h2>
+          <button class="icon-button" @click="cancelEditDevice">
+            <span class="icon-[solar--close-circle-bold-duotone] size-5" />
+          </button>
+        </div>
+        <div class="grid gap-3">
+          <label class="grid gap-2 text-sm">
+            <span class="font-medium">备注</span>
+            <input v-model="metadataForm.remark" class="glass-input" placeholder="例如：测试机 A / 小米 14" />
+          </label>
+          <label class="grid gap-2 text-sm">
+            <span class="font-medium">分组</span>
+            <input v-model="metadataForm.group" class="glass-input" placeholder="例如：测试组 / 运营组" />
+          </label>
+          <label class="grid gap-2 text-sm">
+            <span class="font-medium">标签</span>
+            <input v-model="metadataForm.tags" class="glass-input" placeholder="多个标签用逗号分隔" />
+          </label>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <button class="glass-button" @click="cancelEditDevice">取消</button>
+          <button class="glass-button glass-button-primary" :disabled="metadataSaving" @click="saveDeviceMetadata(editingDevice.deviceId)">保存</button>
         </div>
       </div>
     </div>

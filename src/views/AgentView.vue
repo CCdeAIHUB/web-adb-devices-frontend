@@ -308,7 +308,7 @@ onMounted(load)
             <h2 class="font-semibold">{{ activeConversation?.title || 'AI Agent' }}</h2>
             <p class="mt-1 text-sm text-slate-500">真正调用已配置模型，并把可用设备、ADB/APK 能力作为上下文提供给 AI。</p>
           </div>
-          <RouterLink class="glass-button" to="/settings">
+          <RouterLink class="glass-button" :to="{ name: 'settings', query: { section: 'agent' } }">
             <span class="icon-[solar--settings-outline] size-5" />
             <span>模型设置</span>
           </RouterLink>

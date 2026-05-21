@@ -8,6 +8,7 @@ import SettingsView from '@/views/SettingsView.vue'
 import AgentView from '@/views/AgentView.vue'
 import TasksView from '@/views/TasksView.vue'
 import LogsView from '@/views/LogsView.vue'
+import HelpView from '@/views/HelpView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: '/tasks', name: 'tasks', component: TasksView },
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/logs', name: 'logs', component: LogsView },
+    { path: '/help', name: 'help', component: HelpView },
   ],
 })
 

@@ -126,6 +126,19 @@ textarea {
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
+.glass-input option,
+.glass-select option {
+  background: rgba(248, 250, 252, 0.96);
+  color: #0f172a;
+  padding: 0.65rem 0.85rem;
+}
+
+.dark .glass-input option,
+.dark .glass-select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 .glass-select,
 select.glass-input {
   appearance: none;
@@ -201,6 +214,35 @@ select.glass-input {
 .dark .glass-checkbox {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(15, 23, 42, 0.68);
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 0.85rem;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.58);
+  transform: translateY(-1px);
+}
+
+.dark .icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
 }
 
 .glass-input:focus {

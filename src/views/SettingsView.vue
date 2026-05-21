@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ApiError, api } from '@/api/client'
 
 const { t, locale } = useI18n()
+const route = useRoute()
 
 type FieldType = 'text' | 'password' | 'number' | 'select' | 'toggle'
 
@@ -37,6 +39,14 @@ interface AiProvider {
   enabled: boolean
   hasApiKey: boolean
   lastVerifiedAt?: string
+}
+
+interface LogRecord {
+  id: number
+  level: string
+  module: string
+  message: string
+  createdAt: string
 }
 
 const modelCatalog = {
@@ -156,6 +166,7 @@ const sections: SettingSection[] = [
       { key: 'advanced.exportConfig', label: '配置导入导出入口', type: 'text', readonly: true, placeholder: '后续版本启用' },
     ],
   },
+  { key: 'logs', icon: 'icon-[solar--document-text-bold-duotone]', fields: [] },
 ]
 
 const defaultValues: Record<string, string> = Object.fromEntries(
@@ -187,6 +198,7 @@ const initialSnapshot = ref('')
 const providerSaving = ref(false)
 const providerMessage = ref('')
 const providers = ref<AiProvider[]>([])
+const logs = ref<LogRecord[]>([])
 const providerForm = reactive<{
   providerType: string
   displayName: string
@@ -257,6 +269,10 @@ async function loadProviders() {
   providers.value = await api<AiProvider[]>('/api/agent/providers')
 }
 
+async function loadLogs() {
+  logs.value = await api<LogRecord[]>('/api/system/logs')
+}
+
 function useProviderTemplate() {
   const selectedType = modelCatalog[providerForm.providerType as keyof typeof modelCatalog]
   if (!selectedType) return
@@ -313,7 +329,17 @@ async function saveSettings() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadSettings(), loadProviders()])
+  await Promise.all([loadSettings(), loadProviders(), loadLogs()])
+  const section = String(route.query.section ?? '')
+  if (sections.some((item) => item.key === section)) {
+    selectedKey.value = section
+  }
+})
+watch(() => route.query.section, (section) => {
+  const key = String(section ?? '')
+  if (sections.some((item) => item.key === key)) {
+    selectedKey.value = key
+  }
 })
 watch(() => providerForm.providerType, useProviderTemplate)
 </script>
@@ -350,7 +376,28 @@ watch(() => providerForm.providerType, useProviderTemplate)
           </div>
         </div>
 
-        <div v-if="selected.key === 'agent'" class="grid gap-5 p-5">
+        <div v-if="selected.key === 'logs'" class="grid gap-3 p-5">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-semibold">运行日志</h3>
+            <button class="glass-button h-9 px-3" @click="loadLogs">
+              <span class="icon-[solar--refresh-bold-duotone] size-5" />
+              <span>刷新</span>
+            </button>
+          </div>
+          <div class="overflow-hidden rounded-2xl border border-white/45 bg-white/35 dark:border-white/10 dark:bg-white/5">
+            <div class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
+              <span>时间</span><span>级别</span><span>模块</span><span>消息</span>
+            </div>
+            <div v-for="log in logs" :key="log.id" class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
+              <span class="whitespace-normal break-words text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
+              <span class="font-medium">{{ log.level }}</span>
+              <span>{{ log.module }}</span>
+              <span class="min-w-0 break-words">{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="selected.key === 'agent'" class="grid gap-5 p-5">
           <div class="grid gap-3 md:grid-cols-2">
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型类型</span>

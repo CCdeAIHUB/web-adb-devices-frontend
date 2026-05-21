@@ -166,6 +166,10 @@ function reportError(error: unknown, fallback: string) {
   message.value = error instanceof ApiError ? error.message : fallback
 }
 
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info', target?: string) {
+  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type, target } }))
+}
+
 function refreshScreenshot() {
   if (!canUseAdb.value) {
     message.value = '该设备还没有可用的 ADB serial，无法获取屏幕。'
@@ -173,6 +177,24 @@ function refreshScreenshot() {
   }
 
   screenshotUrl.value = `${controlUrl('control/screenshot')}?t=${Date.now()}`
+}
+
+async function saveScreenshot() {
+  if (!canUseAdb.value) return
+  try {
+    const response = await fetch(controlUrl('control/screenshot'), { credentials: 'include' })
+    if (!response.ok) throw new Error('screenshot failed')
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${device.value?.model || deviceId.value}-screenshot-${Date.now()}.png`
+    link.click()
+    URL.revokeObjectURL(url)
+    notify('截图已保存。', 'success')
+  } catch {
+    notify('截图保存失败，请确认设备 ADB 已连接。', 'error', '/help#adb-auth')
+  }
 }
 
 function onScreenLoaded(event: Event) {
@@ -355,9 +377,11 @@ async function installBundledApk() {
       body: JSON.stringify({}),
     })
     message.value = result.success ? '内置 APK 已安装。' : result.stderr || result.stdout || '内置 APK 安装失败。'
+    notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert')
     await loadPackages()
   } catch (error) {
     reportError(error, '内置 APK 安装请求失败。')
+    notify(message.value, 'error', '/help#install-apk')
   } finally {
     busy.value = false
   }
@@ -506,6 +530,10 @@ onUnmounted(stopTimer)
     <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
       APK 已在线，但当前页面大部分控制功能依赖 ADB，相关按钮已禁用。
     </div>
+    <div v-else-if="canUseAdb && !device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <span>ADB 已连接，但未检测到 APK。请安装内置 APK 后在手机上同意所需权限。</span>
+      <button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">安装内置 APK</button>
+    </div>
 
     <div v-if="activeTab === 'control'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div class="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-800">
@@ -532,6 +560,14 @@ onUnmounted(stopTimer)
             <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="message = '截图加载失败，请确认设备已授权 ADB 且当前在线。'" />
             <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400">等待屏幕截图。</div>
             <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 border-2 border-sky-400/80" />
+          </div>
+          <div class="ml-3 grid content-center gap-2">
+            <button v-for="[label, keyCode, icon] in quickKeys" :key="label" class="icon-button bg-white/10 text-white hover:bg-white/20" :disabled="busy || !canUseAdb" :title="label" @click="sendKey(keyCode)">
+              <span :class="[icon.replace('outline', 'bold-duotone'), 'size-5']" />
+            </button>
+            <button class="icon-button bg-white/10 text-white hover:bg-white/20" :disabled="busy || !canUseAdb" title="保存截图" @click="saveScreenshot">
+              <span class="icon-[solar--camera-bold-duotone] size-5" />
+            </button>
           </div>
         </div>
       </div>

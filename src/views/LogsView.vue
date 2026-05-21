@@ -10,14 +10,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="p-6">
-    <h1 class="mb-6 text-xl font-semibold">日志</h1>
-    <div class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div v-for="log in logs" :key="log.id" class="grid grid-cols-[160px_90px_110px_1fr] gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0 dark:border-slate-800">
-        <span class="text-slate-500">{{ log.createdAt }}</span>
-        <span>{{ log.level }}</span>
+  <section class="liquid-shell min-h-screen p-4 text-slate-950 dark:text-slate-100 sm:p-6">
+    <h1 class="mb-6 text-xl font-semibold">??</h1>
+    <div class="glass-panel overflow-hidden">
+      <div class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
+        <span>??</span><span>??</span><span>??</span><span>??</span>
+      </div>
+      <div v-for="log in logs" :key="log.id" class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
+        <span class="whitespace-normal break-words text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
+        <span class="font-medium">{{ log.level }}</span>
         <span>{{ log.module }}</span>
-        <span>{{ log.message }}</span>
+        <span class="min-w-0 break-words">{{ log.message }}</span>
       </div>
     </div>
   </section>

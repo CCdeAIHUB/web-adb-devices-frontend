@@ -16,9 +16,16 @@ const previewSeconds = ref(8)
 const previewTick = ref(Date.now())
 let previewTimer: ReturnType<typeof window.setInterval> | undefined
 
-const stateOptions = ['Offline', 'Unauthorized', 'Matched', 'Online', 'Protected', 'Updating']
+const stateOptions = ['Offline', 'Unauthorized', 'Matched', 'Online', 'Protected']
 const filteredDevices = computed(() => statusFilter.value === 'all' ? devices.devices : devices.devices.filter((device) => device.displayState === statusFilter.value))
 const counts = computed(() => Object.fromEntries(stateOptions.map((state) => [state, devices.devices.filter((device) => device.displayState === state).length])))
+const stats = computed(() => [
+  ['设备总数', devices.devices.length, 'icon-[solar--devices-bold-duotone]'],
+  ['已连接', devices.devices.filter((device) => device.displayState === 'Online').length, 'icon-[solar--link-circle-bold-duotone]'],
+  ['ADB 已连接', devices.devices.filter((device) => device.displayState === 'Matched' || device.displayState === 'Online').length, 'icon-[solar--usb-bold-duotone]'],
+  ['AI 模型', '已接入', 'icon-[solar--magic-stick-3-bold-duotone]'],
+  ['今日任务成功', '0', 'icon-[solar--check-circle-bold-duotone]'],
+])
 
 function canPreview(device: DeviceRecord) {
   return previewEnabled.value && Boolean(device.apkVersion) && Boolean(device.temporaryAdbSerial || device.deviceId.startsWith('adb:')) && device.displayState !== 'Offline'
@@ -102,6 +109,16 @@ onUnmounted(() => {
           <span class="icon-[solar--video-frame-play-horizontal-outline] size-5" />
           <span>{{ previewEnabled ? '关闭预览' : '开启预览' }}</span>
         </button>
+      </div>
+    </div>
+
+    <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div v-for="[label, value, icon] in stats" :key="label" class="glass-panel flex items-center justify-between gap-3 p-4">
+        <div>
+          <div class="text-xs text-slate-500">{{ label }}</div>
+          <strong class="mt-1 block text-2xl">{{ value }}</strong>
+        </div>
+        <span :class="[icon, 'size-7 text-sky-500']" />
       </div>
     </div>
 
