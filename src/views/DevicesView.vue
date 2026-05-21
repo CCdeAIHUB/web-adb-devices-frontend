@@ -21,7 +21,6 @@ const environment = ref<EnvironmentSelfCheck | null>(null)
 const editingDeviceId = ref('')
 const metadataSaving = ref(false)
 const metadataForm = ref({ remark: '', group: '', tags: '' })
-const apkDownloadUrl = 'https://cccode-1258874563.cos.ap-beijing.myqcloud.com/app-release-unsigned.apk'
 let scanTimer: ReturnType<typeof window.setInterval> | undefined
 
 interface AdbCommandResult {
@@ -52,6 +51,10 @@ interface EnvironmentSelfCheck {
       executableName: string
     }
     mirrors: AdbMirrorProbe[]
+  }
+  apk: {
+    exists: boolean
+    path: string
   }
 }
 
@@ -181,6 +184,23 @@ async function installAdb() {
     }
   } finally {
     adbInstalling.value = false
+  }
+}
+
+async function installBundledApk(deviceId: string) {
+  commandRunning.value = true
+  commandMessage.value = ''
+  try {
+    const result = await api<AdbCommandResult>(`/api/devices/${encodeURIComponent(deviceId)}/apps/install-bundled`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    commandMessage.value = result.success ? '内置 APK 已安装到设备。' : localizeAdbError(result)
+    await refreshAll()
+  } catch (error) {
+    commandMessage.value = localizeApiError(error, '内置 APK 安装请求发送失败。')
+  } finally {
+    commandRunning.value = false
   }
 }
 
@@ -419,8 +439,8 @@ onUnmounted(stopScanTimer)
         </div>
 
         <div class="border-b border-sky-200 bg-sky-50/80 px-5 py-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/70 dark:text-sky-100">
-          APK 固定下载地址：
-          <a class="font-medium underline-offset-2 hover:underline" :href="apkDownloadUrl" target="_blank" rel="noreferrer">{{ apkDownloadUrl }}</a>
+          内置 APK：
+          <span class="font-medium">{{ environment?.apk.exists ? '已随客户端打包，可直接安装到已授权设备。' : '当前发布包未找到内置 APK。' }}</span>
         </div>
 
         <div class="grid min-h-0 flex-1 lg:grid-cols-[260px_1fr]">
@@ -497,6 +517,14 @@ onUnmounted(stopScanTimer)
                       >
                         {{ adbStateText(device) }}
                       </span>
+                      <button
+                        v-if="device.state === 'device'"
+                        class="h-8 rounded-md bg-sky-500 px-3 text-xs font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60 sm:col-span-2 sm:w-fit"
+                        :disabled="commandRunning || !environment?.apk.exists"
+                        @click="installBundledApk(`adb:${device.serial}`)"
+                      >
+                        安装内置 APK
+                      </button>
                     </div>
 
                     <div v-if="devices.adbScan?.devices.length === 0" class="rounded-md bg-slate-100 p-4 text-sm text-slate-500 dark:bg-slate-800">

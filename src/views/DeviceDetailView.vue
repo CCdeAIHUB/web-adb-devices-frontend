@@ -347,6 +347,22 @@ async function installApk(event: Event) {
   }
 }
 
+async function installBundledApk() {
+  busy.value = true
+  try {
+    const result = await api<AdbCommandResult>(controlUrl('apps/install-bundled'), {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })
+    message.value = result.success ? '内置 APK 已安装。' : result.stderr || result.stdout || '内置 APK 安装失败。'
+    await loadPackages()
+  } catch (error) {
+    reportError(error, '内置 APK 安装请求失败。')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function loadFiles(path = currentPath.value) {
   busy.value = true
   try {
@@ -574,6 +590,7 @@ onUnmounted(stopTimer)
             安装 APK
             <input class="hidden" type="file" accept=".apk,application/vnd.android.package-archive" @change="installApk" />
           </label>
+          <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-300 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="installBundledApk">安装内置 APK</button>
         </div>
         <div class="max-h-[620px] overflow-auto">
           <button v-for="item in filteredPackages" :key="item.packageName" class="grid w-full gap-1 border-t border-slate-100 px-2 py-3 text-left text-sm transition-all duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800" :class="selectedPackage === item.packageName ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : ''" @click="selectedPackage = item.packageName">
