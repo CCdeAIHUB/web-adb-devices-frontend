@@ -32,12 +32,26 @@ interface HardwareInfo {
   properties: string
 }
 
+interface SaveFilePickerWindow extends Window {
+  showSaveFilePicker?: (options: {
+    suggestedName?: string
+    types?: Array<{ description: string; accept: Record<string, string[]> }>
+  }) => Promise<{ createWritable: () => Promise<{ write: (blob: Blob) => Promise<void>; close: () => Promise<void> }> }>
+}
+
 const route = useRoute()
 const devices = useDeviceStore()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const device = computed(() => devices.devices.find((item) => item.deviceId === deviceId.value))
 const canUseAdb = computed(() => Boolean(device.value?.temporaryAdbSerial || deviceId.value.startsWith('adb:')))
-const canUseApk = computed(() => device.value?.displayState === 'Online')
+const canUseApk = computed(() => device.value?.internalState === 'Online' || device.value?.internalState === 'PermissionRequired')
+const permissionRows = computed(() => [
+  { key: 'accessibility', label: '无障碍服务', enabled: Boolean(device.value?.permissions?.accessibility) },
+  { key: 'inputMethod', label: '输入法', enabled: Boolean(device.value?.permissions?.inputMethod) },
+  { key: 'notifications', label: '通知权限', enabled: Boolean(device.value?.permissions?.notifications) },
+  { key: 'batteryUnrestricted', label: '后台运行', enabled: Boolean(device.value?.permissions?.batteryUnrestricted) },
+])
+const missingPermissionNames = computed(() => permissionRows.value.filter((item) => !item.enabled).map((item) => item.label))
 
 const activeTab = ref<'control' | 'terminal' | 'apps' | 'files' | 'hardware' | 'system' | 'power'>('control')
 const screenshotUrl = ref('')
@@ -190,17 +204,36 @@ async function saveScreenshot() {
   if (!canUseAdb.value) return
   try {
     const response = await fetch(controlUrl('control/screenshot'), { credentials: 'include' })
-    if (!response.ok) throw new Error('screenshot failed')
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new Error(body?.message || '截图请求失败')
+    }
     const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${device.value?.model || deviceId.value}-screenshot-${Date.now()}.png`
-    link.click()
-    URL.revokeObjectURL(url)
+    if (blob.size < 8 || !blob.type.includes('png')) {
+      throw new Error('设备没有返回有效截图，请确认屏幕已解锁且 ADB 在线。')
+    }
+
+    const fileName = `${device.value?.model || deviceId.value}-screenshot-${Date.now()}.png`
+    const picker = (window as SaveFilePickerWindow).showSaveFilePicker
+    if (picker) {
+      const handle = await picker({
+        suggestedName: fileName,
+        types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }],
+      })
+      const writable = await handle.createWritable()
+      await writable.write(blob)
+      await writable.close()
+    } else {
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.click()
+      URL.revokeObjectURL(url)
+    }
     notify('截图已保存。', 'success')
-  } catch {
-    notify('截图保存失败，请确认设备 ADB 已连接。', 'error', '/help#adb-auth')
+  } catch (error) {
+    notify(error instanceof Error ? error.message : '截图保存失败，请确认设备 ADB 已连接。', 'error', '/help#adb-auth')
   }
 }
 
@@ -209,6 +242,12 @@ function onScreenLoaded(event: Event) {
   if (image.naturalWidth > 0 && image.naturalHeight > 0) {
     liveScreen.value = { width: image.naturalWidth, height: image.naturalHeight }
   }
+}
+
+function onScreenError() {
+  screenshotUrl.value = ''
+  message.value = '截图加载失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+  notify(message.value, 'error', '/help#adb-auth')
 }
 
 function startStream() {
@@ -384,7 +423,9 @@ async function installBundledApk() {
       body: JSON.stringify({}),
     })
     bundledApkInstalled.value = result.success
-    message.value = result.success ? '内置 APK 已安装，请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : result.stderr || result.stdout || '内置 APK 安装失败。'
+    message.value = result.success
+      ? (result.stdout?.includes('旧版 APK') ? '检测到旧版 APK，已自动替换并打开手机端引导页。请在手机上确认权限。' : '内置 APK 已安装，并已打开手机端引导页。请在手机上开启所需权限。')
+      : result.stderr || result.stdout || '内置 APK 安装失败。'
     notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert')
     await loadPackages()
   } catch (error) {
@@ -538,6 +579,20 @@ onUnmounted(stopTimer)
     <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
       APK 已在线，但当前页面大部分控制功能依赖 ADB，相关按钮已禁用。
     </div>
+    <div v-else-if="canUseAdb && device?.internalState === 'PermissionRequired'" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <div class="min-w-0">
+        <p class="font-medium">APK 已连接，但还需要开启权限：{{ missingPermissionNames.join('、') || '等待手机端上报' }}</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <span v-for="item in permissionRows" :key="item.key" class="rounded-full px-2.5 py-1 text-xs font-medium" :class="item.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'">
+            {{ item.label }}：{{ item.enabled ? '已开启' : '未开启' }}
+          </span>
+        </div>
+      </div>
+      <RouterLink class="glass-button" to="/help#apk-permissions">
+        <span class="icon-[solar--question-circle-bold-duotone] size-5" />
+        <span>权限帮助</span>
+      </RouterLink>
+    </div>
     <div v-else-if="canUseAdb && !device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       <span>{{ bundledApkInstalled ? 'APK 已安装，下一步请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : 'APK 通道尚未在线：如果尚未安装，请安装内置 APK；如果已经安装，请在手机上授予所需权限。' }}</span>
       <div class="flex flex-wrap gap-2">
@@ -571,7 +626,7 @@ onUnmounted(stopTimer)
             @pointerdown="onPointerDown"
             @pointerup="onPointerUp"
           >
-            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="message = '截图加载失败，请确认设备已授权 ADB 且当前在线。'" />
+            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="onScreenError" />
             <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400">等待屏幕截图。</div>
             <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 border-2 border-sky-400/80" />
           </div>

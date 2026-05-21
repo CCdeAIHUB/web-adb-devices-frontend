@@ -90,6 +90,7 @@ const filteredDevices = computed(() => {
 
 function stateClass(state: string) {
   if (state === 'Online') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+  if (state === 'Authorized') return 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'
   if (state === 'Unauthorized') return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
   if (state === 'Protected') return 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
   if (state === 'Updating') return 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
@@ -216,7 +217,7 @@ async function installBundledApk(deviceId: string) {
       body: JSON.stringify({}),
     })
     if (result.success) {
-      notify('内置 APK 已安装到设备。', 'success')
+      notify(result.stdout?.includes('旧版 APK') ? '检测到旧版 APK，已自动替换并打开手机端引导页。' : '内置 APK 已安装，并已打开手机端引导页。', 'success')
     } else {
       notify(localizeAdbError(result), 'error', '/help#apk-cert')
     }

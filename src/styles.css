@@ -176,12 +176,6 @@ textarea {
 }
 
 .liquid-select-menu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 0.5rem);
-  z-index: 60;
-  max-height: 18rem;
   overflow: auto;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.66);

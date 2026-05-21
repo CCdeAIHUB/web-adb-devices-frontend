@@ -14,7 +14,14 @@ export interface DeviceRecord {
   screenHeight: number
   orientation: string
   ipAddress?: string
-  displayState: 'Offline' | 'Unauthorized' | 'Matched' | 'Online' | 'Protected' | 'Updating'
+  permissions?: {
+    accessibility: boolean
+    inputMethod: boolean
+    notifications: boolean
+    batteryUnrestricted: boolean
+    allRequired: boolean
+  }
+  displayState: 'Offline' | 'Unauthorized' | 'Matched' | 'Online' | 'Authorized' | 'Protected' | 'Updating'
   internalState: string
   updatedAt: string
 }

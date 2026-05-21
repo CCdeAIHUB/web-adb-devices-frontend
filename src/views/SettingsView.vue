@@ -356,8 +356,8 @@ watch(() => providerForm.providerType, useProviderTemplate)
       </button>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[240px_1fr]">
-      <nav class="glass-panel grid gap-2 p-2 lg:block lg:space-y-1">
+    <div class="grid items-start gap-4 lg:grid-cols-[240px_1fr]">
+      <nav class="glass-panel grid gap-2 p-2 lg:block lg:min-h-[552px] lg:space-y-1">
         <button
           v-for="section in sections"
           :key="section.key"

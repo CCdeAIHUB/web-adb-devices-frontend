@@ -17,7 +17,7 @@ const previewSeconds = ref(8)
 const previewTick = ref(Date.now())
 let previewTimer: ReturnType<typeof window.setInterval> | undefined
 
-const stateOptions = ['Offline', 'Unauthorized', 'Matched', 'Online', 'Protected']
+const stateOptions = ['Offline', 'Unauthorized', 'Matched', 'Online', 'Authorized', 'Protected']
 const filteredDevices = computed(() => statusFilter.value === 'all' ? devices.devices : devices.devices.filter((device) => device.displayState === statusFilter.value))
 const counts = computed(() => Object.fromEntries(stateOptions.map((state) => [state, devices.devices.filter((device) => device.displayState === state).length])))
 const statusOptions = computed(() => [
@@ -26,8 +26,8 @@ const statusOptions = computed(() => [
 ])
 const stats = computed(() => [
   ['设备总数', devices.devices.length, 'icon-[solar--devices-bold-duotone]'],
-  ['已连接', devices.devices.filter((device) => device.displayState === 'Online').length, 'icon-[solar--link-circle-bold-duotone]'],
-  ['ADB 已连接', devices.devices.filter((device) => device.displayState === 'Matched' || device.displayState === 'Online').length, 'icon-[solar--usb-bold-duotone]'],
+  ['已连接', devices.devices.filter((device) => device.displayState === 'Online' || device.displayState === 'Authorized').length, 'icon-[solar--link-circle-bold-duotone]'],
+  ['ADB 已连接', devices.devices.filter((device) => device.displayState === 'Matched' || device.displayState === 'Online' || device.displayState === 'Authorized').length, 'icon-[solar--usb-bold-duotone]'],
   ['AI 模型', '已接入', 'icon-[solar--magic-stick-3-bold-duotone]'],
   ['今日任务成功', '0', 'icon-[solar--check-circle-bold-duotone]'],
 ])
@@ -43,6 +43,7 @@ function previewUrl(device: DeviceRecord) {
 function connectionLabel(device: DeviceRecord) {
   if (device.displayState === 'Offline') return '未连接'
   if (!device.apkVersion) return '未安装 APK'
+  if (device.displayState === 'Authorized') return '已授权'
   if (!device.temporaryAdbSerial) return 'APK 在线'
   return device.displayState
 }
@@ -55,6 +56,7 @@ function deviceAspectRatio(device: DeviceRecord) {
 
 function stateClass(state: string) {
   if (state === 'Online') return 'bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+  if (state === 'Authorized') return 'bg-cyan-100/80 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'
   if (state === 'Unauthorized') return 'bg-amber-100/80 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
   if (state === 'Protected') return 'bg-rose-100/80 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
   if (state === 'Updating') return 'bg-sky-100/80 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
