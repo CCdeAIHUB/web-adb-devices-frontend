@@ -6,6 +6,7 @@ import DevicesView from '@/views/DevicesView.vue'
 import DeviceDetailView from '@/views/DeviceDetailView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import AgentView from '@/views/AgentView.vue'
+import TasksView from '@/views/TasksView.vue'
 import LogsView from '@/views/LogsView.vue'
 
 export const router = createRouter({
@@ -16,6 +17,7 @@ export const router = createRouter({
     { path: '/devices', name: 'devices', component: DevicesView },
     { path: '/devices/:deviceId', name: 'device-detail', component: DeviceDetailView },
     { path: '/agent', name: 'agent', component: AgentView },
+    { path: '/tasks', name: 'tasks', component: TasksView },
     { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/logs', name: 'logs', component: LogsView },
   ],

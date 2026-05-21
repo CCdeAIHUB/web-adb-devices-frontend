@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { api } from '@/api/client'
+import { ApiError, api } from '@/api/client'
 
 const { t, locale } = useI18n()
 
@@ -25,6 +25,18 @@ interface SettingSection {
 interface SettingsResponse {
   values: Record<string, string | null>
   runtime?: Record<string, unknown> | null
+}
+
+interface AiProvider {
+  id: string
+  providerType: string
+  displayName: string
+  baseUrl: string
+  model: string
+  modelVersion: string
+  enabled: boolean
+  hasApiKey: boolean
+  lastVerifiedAt?: string
 }
 
 const sections: SettingSection[] = [
@@ -98,12 +110,7 @@ const sections: SettingSection[] = [
   {
     key: 'agent',
     icon: 'icon-[solar--magic-stick-3-outline]',
-    fields: [
-      { key: 'agent.provider', label: '默认模型供应商', type: 'select', options: [{ label: 'ChatGPT', value: 'openai' }, { label: 'DeepSeek', value: 'deepseek' }, { label: '智谱 GLM', value: 'zhipu' }] },
-      { key: 'agent.permissionMode', label: 'Agent 权限模式', type: 'select', options: [{ label: '默认', value: 'default' }, { label: '自动审批', value: 'autoApproval' }, { label: '完全权限', value: 'fullAccess' }] },
-      { key: 'agent.trustedSteps', label: '自动执行步数', type: 'number', placeholder: '3' },
-      { key: 'agent.apiKey', label: 'API Key', type: 'password' },
-    ],
+    fields: [],
   },
   {
     key: 'advanced',
@@ -141,6 +148,27 @@ const values = reactive<Record<string, string>>({})
 const runtime = ref<Record<string, unknown>>({})
 const saving = ref(false)
 const savedAt = ref('')
+const providerSaving = ref(false)
+const providerMessage = ref('')
+const providers = ref<AiProvider[]>([])
+const providerTypes = [
+  { label: 'OpenAI', value: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1' },
+  { label: 'DeepSeek', value: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { label: '智谱 GLM', value: 'zhipu', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4' },
+  { label: 'Gemini', value: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-1.5-pro' },
+  { label: '通义千问', value: 'qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { label: 'Moonshot', value: 'moonshot', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
+  { label: '硅基流动', value: 'siliconflow', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
+  { label: '自定义 OpenAI 兼容', value: 'custom', baseUrl: '', model: '' },
+]
+const providerForm = reactive({
+  providerType: providerTypes[0].value,
+  displayName: '',
+  baseUrl: providerTypes[0].baseUrl,
+  model: providerTypes[0].model,
+  modelVersion: '',
+  apiKey: '',
+})
 
 function fieldValue(key: string) {
   return values[key] ?? defaultValues[key] ?? ''
@@ -175,6 +203,48 @@ async function loadSettings() {
   applyAppearance()
 }
 
+async function loadProviders() {
+  providers.value = await api<AiProvider[]>('/api/agent/providers')
+}
+
+function useProviderTemplate() {
+  const selectedType = providerTypes.find((item) => item.value === providerForm.providerType)
+  if (!selectedType) return
+  if (!providerForm.baseUrl || providerTypes.some((item) => item.baseUrl === providerForm.baseUrl)) {
+    providerForm.baseUrl = selectedType.baseUrl
+  }
+  if (!providerForm.model || providerTypes.some((item) => item.model === providerForm.model)) {
+    providerForm.model = selectedType.model
+  }
+  if (!providerForm.displayName) {
+    providerForm.displayName = selectedType.label
+  }
+}
+
+async function addProvider() {
+  providerSaving.value = true
+  providerMessage.value = ''
+  try {
+    await api<AiProvider>('/api/agent/providers', {
+      method: 'POST',
+      body: JSON.stringify(providerForm),
+    })
+    providerMessage.value = '模型验证通过，已添加到 Agent 可用模型。'
+    providerForm.apiKey = ''
+    await loadProviders()
+    await loadSettings()
+  } catch (error) {
+    providerMessage.value = error instanceof ApiError ? error.message : '模型添加失败，请检查配置。'
+  } finally {
+    providerSaving.value = false
+  }
+}
+
+async function deleteProvider(providerId: string) {
+  await api(`/api/agent/providers/${providerId}`, { method: 'DELETE' })
+  await loadProviders()
+}
+
 async function saveSettings() {
   saving.value = true
   try {
@@ -193,8 +263,11 @@ async function saveSettings() {
   }
 }
 
-onMounted(loadSettings)
+onMounted(async () => {
+  await Promise.all([loadSettings(), loadProviders()])
+})
 watch(() => [values['ui.language'], values['ui.theme']], applyAppearance)
+watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
 <template>
@@ -233,7 +306,87 @@ watch(() => [values['ui.language'], values['ui.theme']], applyAppearance)
           </div>
         </div>
 
-        <div class="divide-y divide-slate-100 dark:divide-slate-800">
+        <div v-if="selected.key === 'agent'" class="grid gap-5 p-5">
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="grid gap-2 text-sm">
+              <span class="font-medium text-slate-700 dark:text-slate-200">模型类型</span>
+              <select v-model="providerForm.providerType" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950">
+                <option v-for="item in providerTypes" :key="item.value" :value="item.value">{{ item.label }}</option>
+              </select>
+            </label>
+            <label class="grid gap-2 text-sm">
+              <span class="font-medium text-slate-700 dark:text-slate-200">显示名称</span>
+              <input v-model="providerForm.displayName" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="例如：工作用 GPT-4.1" />
+            </label>
+            <label class="grid gap-2 text-sm">
+              <span class="font-medium text-slate-700 dark:text-slate-200">模型版本</span>
+              <input v-model="providerForm.model" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="gpt-4.1 / deepseek-chat / glm-4" />
+            </label>
+            <label class="grid gap-2 text-sm">
+              <span class="font-medium text-slate-700 dark:text-slate-200">版本备注</span>
+              <input v-model="providerForm.modelVersion" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="可选，例如 fast / pro / 32k" />
+            </label>
+            <label class="grid gap-2 text-sm md:col-span-2">
+              <span class="font-medium text-slate-700 dark:text-slate-200">API 地址</span>
+              <input v-model="providerForm.baseUrl" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="https://api.example.com/v1" />
+            </label>
+            <label class="grid gap-2 text-sm md:col-span-2">
+              <span class="font-medium text-slate-700 dark:text-slate-200">API 密钥</span>
+              <input v-model="providerForm.apiKey" type="password" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="添加时后端会立即验证" />
+            </label>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60"
+              :disabled="providerSaving"
+              @click="addProvider"
+            >
+              <span class="icon-[solar--add-circle-outline] size-5" />
+              <span>{{ providerSaving ? '验证中' : '添加模型' }}</span>
+            </button>
+            <span v-if="providerMessage" class="text-sm" :class="providerMessage.includes('失败') || providerMessage.includes('无法') || providerMessage.includes('无效') ? 'text-rose-600' : 'text-emerald-600'">
+              {{ providerMessage }}
+            </span>
+          </div>
+
+          <div class="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-500 dark:bg-slate-800">
+                <tr>
+                  <th class="px-4 py-3">名称</th>
+                  <th class="px-4 py-3">模型</th>
+                  <th class="px-4 py-3">API 地址</th>
+                  <th class="px-4 py-3">状态</th>
+                  <th class="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="providers.length === 0" class="border-t border-slate-100 dark:border-slate-800">
+                  <td colspan="5" class="px-4 py-8 text-center text-slate-500">还没有添加可用模型。</td>
+                </tr>
+                <tr v-for="provider in providers" :key="provider.id" class="border-t border-slate-100 dark:border-slate-800">
+                  <td class="px-4 py-3">
+                    <div class="font-medium">{{ provider.displayName }}</div>
+                    <div class="text-xs text-slate-500">{{ provider.providerType }}</div>
+                  </td>
+                  <td class="px-4 py-3">{{ provider.model }}{{ provider.modelVersion ? ` · ${provider.modelVersion}` : '' }}</td>
+                  <td class="max-w-[280px] truncate px-4 py-3 text-slate-500">{{ provider.baseUrl }}</td>
+                  <td class="px-4 py-3">
+                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">已验证</span>
+                  </td>
+                  <td class="px-4 py-3 text-right">
+                    <button class="rounded-md p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950" @click="deleteProvider(provider.id)">
+                      <span class="icon-[solar--trash-bin-trash-outline] size-5" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
           <label
             v-for="field in selected.fields"
             :key="field.key"

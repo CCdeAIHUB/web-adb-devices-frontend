@@ -9,6 +9,7 @@ const nav = [
   ['dashboard', '/', 'icon-[solar--home-2-outline]'],
   ['devices', '/devices', 'icon-[solar--devices-outline]'],
   ['agent', '/agent', 'icon-[solar--magic-stick-3-outline]'],
+  ['tasks', '/tasks', 'icon-[solar--programming-outline]'],
   ['settings', '/settings', 'icon-[solar--settings-outline]'],
   ['logs', '/logs', 'icon-[solar--document-text-outline]'],
 ] as const
