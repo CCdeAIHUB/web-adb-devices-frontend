@@ -16,10 +16,10 @@ const nav = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+  <div class="min-h-screen text-slate-950 dark:text-slate-100">
     <aside
       v-if="route.name !== 'login'"
-      class="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white/90 p-4 dark:border-slate-800 dark:bg-slate-950/90 lg:block"
+      class="fixed inset-y-0 left-0 hidden w-64 border-r border-white/45 bg-white/50 p-4 shadow-[12px_0_40px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/45 lg:block"
     >
       <div class="mb-8 flex items-center gap-3">
         <span class="icon-[solar--smartphone-update-outline] size-7 text-sky-500" />
@@ -30,8 +30,8 @@ const nav = [
           v-for="[key, href, icon] in nav"
           :key="key"
           :to="href"
-          class="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-slate-600 hover:bg-sky-50 hover:text-sky-700 dark:text-slate-300 dark:hover:bg-slate-900"
-          active-class="bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300"
+          class="flex h-10 items-center gap-3 rounded-2xl px-3 text-sm text-slate-600 transition-all duration-300 hover:bg-white/50 hover:text-sky-700 dark:text-slate-300 dark:hover:bg-white/10"
+          active-class="bg-white/70 text-sky-700 shadow-sm ring-1 ring-white/70 dark:bg-white/15 dark:text-sky-300 dark:ring-white/10"
         >
           <span :class="[icon, 'size-5']" />
           <span>{{ t(`nav.${key}`) }}</span>

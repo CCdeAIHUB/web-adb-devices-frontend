@@ -39,6 +39,52 @@ interface AiProvider {
   lastVerifiedAt?: string
 }
 
+const modelCatalog = {
+  openai: {
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3', 'gpt-5.2', 'gpt-4o', 'gpt-4o-mini'],
+  },
+  deepseek: {
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-chat', 'deepseek-reasoner'],
+  },
+  zhipu: {
+    label: '智谱 GLM',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: ['glm-5.1', 'glm-4.7', 'glm-4-plus', 'glm-4-air', 'glm-4-flash'],
+  },
+  gemini: {
+    label: 'Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    models: ['gemini-3-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+  },
+  qwen: {
+    label: '通义千问',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen3-coder-plus', 'qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen-vl-plus'],
+  },
+  moonshot: {
+    label: 'Moonshot / Kimi',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: ['kimi-k2.5', 'kimi-latest', 'moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
+  },
+  siliconflow: {
+    label: '硅基流动',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    models: ['deepseek-ai/DeepSeek-V3.2', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen3-Coder-30B-A3B-Instruct', 'Qwen/Qwen2.5-72B-Instruct'],
+  },
+  custom: {
+    label: '自定义 OpenAI 兼容',
+    baseUrl: '',
+    models: ['custom'],
+  },
+} as const
+
+const providerTypes = Object.entries(modelCatalog).map(([value, item]) => ({ value, label: item.label }))
+const providerModelOptions = computed(() => modelCatalog[providerForm.providerType as keyof typeof modelCatalog]?.models ?? ['custom'])
+
 const sections: SettingSection[] = [
   {
     key: 'general',
@@ -57,6 +103,9 @@ const sections: SettingSection[] = [
       { key: 'network.apkWsPort', label: 'APK 专用端口', type: 'number', readonly: true },
       { key: 'network.publicAccess', label: '允许公网访问前端端口', type: 'toggle' },
       { key: 'network.externalHost', label: '外部访问域名', type: 'text', placeholder: 'example.com' },
+      { key: 'network.frontendHttps', label: '前端 HTTPS', type: 'toggle' },
+      { key: 'network.certificatePath', label: '证书路径', type: 'text', placeholder: 'C:\\certs\\fullchain.pem' },
+      { key: 'network.privateKeyPath', label: '私钥路径', type: 'text', placeholder: 'C:\\certs\\privkey.pem' },
     ],
   },
   {
@@ -64,9 +113,6 @@ const sections: SettingSection[] = [
     icon: 'icon-[solar--shield-keyhole-outline]',
     fields: [
       { key: 'security.sessionDays', label: '登录保持天数', type: 'number', placeholder: '30' },
-      { key: 'security.frontendHttps', label: '前端 HTTPS', type: 'toggle' },
-      { key: 'security.certificatePath', label: '证书路径', type: 'text', placeholder: 'C:\\certs\\fullchain.pem' },
-      { key: 'security.privateKeyPath', label: '私钥路径', type: 'text', placeholder: 'C:\\certs\\privkey.pem' },
     ],
   },
   {
@@ -96,6 +142,9 @@ const sections: SettingSection[] = [
       { key: 'media.defaultCodec', label: '默认编码', type: 'select', options: [{ label: 'H.264', value: 'h264' }, { label: 'H.265', value: 'h265' }] },
       { key: 'media.defaultBitrate', label: '默认码率 Kbps', type: 'number', placeholder: '6000' },
       { key: 'media.lowResStream', label: '启用低分辨率截图流', type: 'toggle' },
+      { key: 'media.previewStreamEnabled', label: '总览页面设备预览', type: 'toggle' },
+      { key: 'media.previewRefreshSeconds', label: '预览刷新秒数', type: 'number', placeholder: '8' },
+      { key: 'media.previewMaxWidth', label: '预览最大宽度', type: 'number', placeholder: '360' },
     ],
   },
   {
@@ -107,11 +156,7 @@ const sections: SettingSection[] = [
       { key: 'automation.persistOfflineTasks', label: '启用 APK 离线任务缓存', type: 'toggle' },
     ],
   },
-  {
-    key: 'agent',
-    icon: 'icon-[solar--magic-stick-3-outline]',
-    fields: [],
-  },
+  { key: 'agent', icon: 'icon-[solar--magic-stick-3-outline]', fields: [] },
   {
     key: 'advanced',
     icon: 'icon-[solar--settings-minimalistic-outline]',
@@ -128,6 +173,7 @@ const defaultValues: Record<string, string> = Object.fromEntries(
     section.fields.map((field) => {
       if (field.key === 'ui.language') return [field.key, 'zh']
       if (field.key === 'ui.theme') return [field.key, 'system']
+      if (field.key === 'startup.openBrowser') return [field.key, 'true']
       if (field.key === 'devices.autoInstallApk') return [field.key, 'true']
       if (field.key === 'devices.autoLaunchApk') return [field.key, 'true']
       if (field.key === 'devices.keepAlive') return [field.key, 'true']
@@ -135,6 +181,8 @@ const defaultValues: Record<string, string> = Object.fromEntries(
       if (field.key === 'resources.autoDownloadApk') return [field.key, 'true']
       if (field.key === 'resources.verifySignature') return [field.key, 'true']
       if (field.key === 'devices.wirelessPairTimeout') return [field.key, '15']
+      if (field.key === 'media.previewRefreshSeconds') return [field.key, '8']
+      if (field.key === 'media.previewMaxWidth') return [field.key, '360']
       if (field.type === 'select') return [field.key, field.options?.[0]?.value ?? '']
       if (field.type === 'toggle') return [field.key, 'false']
       return [field.key, '']
@@ -151,24 +199,31 @@ const savedAt = ref('')
 const providerSaving = ref(false)
 const providerMessage = ref('')
 const providers = ref<AiProvider[]>([])
-const providerTypes = [
-  { label: 'OpenAI', value: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1' },
-  { label: 'DeepSeek', value: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  { label: '智谱 GLM', value: 'zhipu', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4' },
-  { label: 'Gemini', value: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-1.5-pro' },
-  { label: '通义千问', value: 'qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
-  { label: 'Moonshot', value: 'moonshot', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-  { label: '硅基流动', value: 'siliconflow', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct' },
-  { label: '自定义 OpenAI 兼容', value: 'custom', baseUrl: '', model: '' },
-]
-const providerForm = reactive({
-  providerType: providerTypes[0].value,
+const providerForm = reactive<{
+  providerType: string
+  displayName: string
+  baseUrl: string
+  model: string
+  modelVersion: string
+  apiKey: string
+}>({
+  providerType: 'openai',
   displayName: '',
-  baseUrl: providerTypes[0].baseUrl,
-  model: providerTypes[0].model,
+  baseUrl: modelCatalog.openai.baseUrl,
+  model: modelCatalog.openai.models[0],
   modelVersion: '',
   apiKey: '',
 })
+
+const runtimeRows = computed(() => [
+  ['软件版本', String(runtime.value.appVersion ?? 'v1.0.1')],
+  ['管理端口', String(runtime.value.adminPort ?? '6333')],
+  ['APK 端口', String(runtime.value.apkWsPort ?? '6334')],
+  ['ADB 私有端口', String(runtime.value.privateAdbPort ?? '5038')],
+  ['.NET', String(runtime.value.dotnetVersion ?? '-')],
+  ['系统', String(runtime.value.os ?? '-')],
+  ['数据目录', String(runtime.value.dataRoot ?? '-')],
+])
 
 function fieldValue(key: string) {
   return values[key] ?? defaultValues[key] ?? ''
@@ -208,17 +263,11 @@ async function loadProviders() {
 }
 
 function useProviderTemplate() {
-  const selectedType = providerTypes.find((item) => item.value === providerForm.providerType)
+  const selectedType = modelCatalog[providerForm.providerType as keyof typeof modelCatalog]
   if (!selectedType) return
-  if (!providerForm.baseUrl || providerTypes.some((item) => item.baseUrl === providerForm.baseUrl)) {
-    providerForm.baseUrl = selectedType.baseUrl
-  }
-  if (!providerForm.model || providerTypes.some((item) => item.model === providerForm.model)) {
-    providerForm.model = selectedType.model
-  }
-  if (!providerForm.displayName) {
-    providerForm.displayName = selectedType.label
-  }
+  providerForm.baseUrl = selectedType.baseUrl
+  providerForm.model = selectedType.models[0]
+  providerForm.displayName = selectedType.label
 }
 
 async function addProvider() {
@@ -271,26 +320,22 @@ watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
 <template>
-  <section class="min-h-screen bg-slate-50 p-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:p-6">
+  <section class="min-h-screen liquid-shell p-4 text-slate-950 dark:text-slate-100 sm:p-6">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">设置</h1>
-      <button
-        class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60"
-        :disabled="saving"
-        @click="saveSettings"
-      >
+      <button class="glass-button glass-button-primary" :disabled="saving" @click="saveSettings">
         <span class="icon-[solar--diskette-outline] size-5" />
         <span>{{ saving ? '保存中' : '保存' }}</span>
       </button>
     </div>
 
     <div class="grid gap-4 lg:grid-cols-[240px_1fr]">
-      <nav class="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 lg:block lg:space-y-1">
+      <nav class="glass-panel grid gap-2 p-2 lg:block lg:space-y-1">
         <button
           v-for="section in sections"
           :key="section.key"
-          class="flex h-11 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-slate-800"
-          :class="selectedKey === section.key ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'text-slate-600 dark:text-slate-300'"
+          class="flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-all duration-300 hover:bg-white/40 dark:hover:bg-white/10"
+          :class="selectedKey === section.key ? 'bg-white/65 text-sky-700 shadow-sm ring-1 ring-white/70 dark:bg-white/15 dark:text-sky-200' : 'text-slate-600 dark:text-slate-300'"
           @click="selectedKey = section.key"
         >
           <span :class="[section.icon, 'size-5']" />
@@ -298,8 +343,8 @@ watch(() => providerForm.providerType, useProviderTemplate)
         </button>
       </nav>
 
-      <div class="rounded-lg border border-slate-200 bg-white transition-all duration-300 dark:border-slate-800 dark:bg-slate-900">
-        <div class="border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+      <div class="glass-panel overflow-hidden">
+        <div class="border-b border-white/40 px-5 py-4 dark:border-white/10">
           <div class="flex items-center gap-3">
             <span :class="[selected.icon, 'size-6 text-sky-500']" />
             <h2 class="text-base font-semibold">{{ t(`settings.${selected.key}`) }}</h2>
@@ -310,38 +355,36 @@ watch(() => providerForm.providerType, useProviderTemplate)
           <div class="grid gap-3 md:grid-cols-2">
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型类型</span>
-              <select v-model="providerForm.providerType" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950">
+              <select v-model="providerForm.providerType" class="glass-input">
                 <option v-for="item in providerTypes" :key="item.value" :value="item.value">{{ item.label }}</option>
               </select>
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">显示名称</span>
-              <input v-model="providerForm.displayName" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="例如：工作用 GPT-4.1" />
+              <input v-model="providerForm.displayName" class="glass-input" placeholder="例如：设备控制主模型" />
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型版本</span>
-              <input v-model="providerForm.model" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="gpt-4.1 / deepseek-chat / glm-4" />
+              <select v-model="providerForm.model" class="glass-input">
+                <option v-for="model in providerModelOptions" :key="model" :value="model">{{ model }}</option>
+              </select>
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">版本备注</span>
-              <input v-model="providerForm.modelVersion" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="可选，例如 fast / pro / 32k" />
+              <input v-model="providerForm.modelVersion" class="glass-input" placeholder="可选，例如 fast / pro / 32k" />
             </label>
             <label class="grid gap-2 text-sm md:col-span-2">
               <span class="font-medium text-slate-700 dark:text-slate-200">API 地址</span>
-              <input v-model="providerForm.baseUrl" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="https://api.example.com/v1" />
+              <input v-model="providerForm.baseUrl" class="glass-input" placeholder="https://api.example.com/v1" />
             </label>
             <label class="grid gap-2 text-sm md:col-span-2">
               <span class="font-medium text-slate-700 dark:text-slate-200">API 密钥</span>
-              <input v-model="providerForm.apiKey" type="password" class="h-10 rounded-md border border-slate-300 bg-white px-3 dark:border-slate-700 dark:bg-slate-950" placeholder="添加时后端会立即验证" />
+              <input v-model="providerForm.apiKey" type="password" class="glass-input" placeholder="添加时后端会立即验证" />
             </label>
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
-            <button
-              class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60"
-              :disabled="providerSaving"
-              @click="addProvider"
-            >
+            <button class="glass-button glass-button-primary" :disabled="providerSaving" @click="addProvider">
               <span class="icon-[solar--add-circle-outline] size-5" />
               <span>{{ providerSaving ? '验证中' : '添加模型' }}</span>
             </button>
@@ -350,9 +393,9 @@ watch(() => providerForm.providerType, useProviderTemplate)
             </span>
           </div>
 
-          <div class="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+          <div class="overflow-hidden rounded-2xl border border-white/45 bg-white/35 dark:border-white/10 dark:bg-white/5">
             <table class="w-full text-left text-sm">
-              <thead class="bg-slate-100 text-slate-500 dark:bg-slate-800">
+              <thead class="bg-white/50 text-slate-500 dark:bg-white/5">
                 <tr>
                   <th class="px-4 py-3">名称</th>
                   <th class="px-4 py-3">模型</th>
@@ -362,10 +405,10 @@ watch(() => providerForm.providerType, useProviderTemplate)
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="providers.length === 0" class="border-t border-slate-100 dark:border-slate-800">
+                <tr v-if="providers.length === 0" class="border-t border-white/35 dark:border-white/10">
                   <td colspan="5" class="px-4 py-8 text-center text-slate-500">还没有添加可用模型。</td>
                 </tr>
-                <tr v-for="provider in providers" :key="provider.id" class="border-t border-slate-100 dark:border-slate-800">
+                <tr v-for="provider in providers" :key="provider.id" class="border-t border-white/35 dark:border-white/10">
                   <td class="px-4 py-3">
                     <div class="font-medium">{{ provider.displayName }}</div>
                     <div class="text-xs text-slate-500">{{ provider.providerType }}</div>
@@ -373,10 +416,10 @@ watch(() => providerForm.providerType, useProviderTemplate)
                   <td class="px-4 py-3">{{ provider.model }}{{ provider.modelVersion ? ` · ${provider.modelVersion}` : '' }}</td>
                   <td class="max-w-[280px] truncate px-4 py-3 text-slate-500">{{ provider.baseUrl }}</td>
                   <td class="px-4 py-3">
-                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">已验证</span>
+                    <span class="rounded-full bg-emerald-100/80 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">已验证</span>
                   </td>
                   <td class="px-4 py-3 text-right">
-                    <button class="rounded-md p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950" @click="deleteProvider(provider.id)">
+                    <button class="rounded-xl p-2 text-rose-600 hover:bg-rose-50/80 dark:hover:bg-rose-950" @click="deleteProvider(provider.id)">
                       <span class="icon-[solar--trash-bin-trash-outline] size-5" />
                     </button>
                   </td>
@@ -386,47 +429,26 @@ watch(() => providerForm.providerType, useProviderTemplate)
           </div>
         </div>
 
-        <div v-else class="divide-y divide-slate-100 dark:divide-slate-800">
-          <label
-            v-for="field in selected.fields"
-            :key="field.key"
-            class="grid gap-3 px-5 py-4 sm:grid-cols-[220px_1fr] sm:items-center"
-          >
+        <div v-else class="divide-y divide-white/35 dark:divide-white/10">
+          <div v-if="selected.key === 'general'" class="grid gap-3 px-5 py-4 md:grid-cols-2 xl:grid-cols-4">
+            <div v-for="[label, value] in runtimeRows" :key="label" class="rounded-2xl border border-white/45 bg-white/35 p-3 text-sm dark:border-white/10 dark:bg-white/5">
+              <div class="text-xs text-slate-500">{{ label }}</div>
+              <div class="mt-1 break-all font-medium">{{ value }}</div>
+            </div>
+          </div>
+
+          <label v-for="field in selected.fields" :key="field.key" class="grid gap-3 px-5 py-4 sm:grid-cols-[220px_1fr] sm:items-center">
             <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ field.label }}</span>
 
-            <select
-              v-if="field.type === 'select'"
-              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-950"
-              :value="fieldValue(field.key)"
-              :disabled="field.readonly"
-              @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)"
-            >
+            <select v-if="field.type === 'select'" class="glass-input" :value="fieldValue(field.key)" :disabled="field.readonly" @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)">
               <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
 
-            <button
-              v-else-if="field.type === 'toggle'"
-              type="button"
-              class="flex h-8 w-14 items-center rounded-full p-1 transition-all duration-300"
-              :class="fieldValue(field.key) === 'true' ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-700'"
-              :disabled="field.readonly"
-              @click="setFieldValue(field.key, fieldValue(field.key) !== 'true')"
-            >
-              <span
-                class="size-6 rounded-full bg-white shadow transition-all duration-300"
-                :class="fieldValue(field.key) === 'true' ? 'translate-x-6' : ''"
-              />
+            <button v-else-if="field.type === 'toggle'" type="button" class="flex h-8 w-14 items-center rounded-full p-1 transition-all duration-300" :class="fieldValue(field.key) === 'true' ? 'bg-sky-500/80 shadow-inner' : 'bg-white/45 ring-1 ring-white/60 dark:bg-white/10 dark:ring-white/10'" :disabled="field.readonly" @click="setFieldValue(field.key, fieldValue(field.key) !== 'true')">
+              <span class="size-6 rounded-full bg-white shadow transition-all duration-300" :class="fieldValue(field.key) === 'true' ? 'translate-x-6' : ''" />
             </button>
 
-            <input
-              v-else
-              class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-950"
-              :type="field.type"
-              :value="fieldValue(field.key)"
-              :placeholder="field.placeholder"
-              :readonly="field.readonly"
-              @input="setFieldValue(field.key, ($event.target as HTMLInputElement).value)"
-            />
+            <input v-else class="glass-input" :type="field.type" :value="fieldValue(field.key)" :placeholder="field.placeholder" :readonly="field.readonly" @input="setFieldValue(field.key, ($event.target as HTMLInputElement).value)" />
           </label>
         </div>
       </div>
