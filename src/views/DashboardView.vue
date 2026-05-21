@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { useDeviceStore, type DeviceRecord } from '@/stores/devices'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 interface SettingsResponse {
   values: Record<string, string | null>
@@ -19,6 +20,10 @@ let previewTimer: ReturnType<typeof window.setInterval> | undefined
 const stateOptions = ['Offline', 'Unauthorized', 'Matched', 'Online', 'Protected']
 const filteredDevices = computed(() => statusFilter.value === 'all' ? devices.devices : devices.devices.filter((device) => device.displayState === statusFilter.value))
 const counts = computed(() => Object.fromEntries(stateOptions.map((state) => [state, devices.devices.filter((device) => device.displayState === state).length])))
+const statusOptions = computed(() => [
+  { label: `全部设备（${devices.devices.length}）`, value: 'all' },
+  ...stateOptions.map((state) => ({ label: `${t(`states.${state}`)}（${counts.value[state] ?? 0}）`, value: state })),
+])
 const stats = computed(() => [
   ['设备总数', devices.devices.length, 'icon-[solar--devices-bold-duotone]'],
   ['已连接', devices.devices.filter((device) => device.displayState === 'Online').length, 'icon-[solar--link-circle-bold-duotone]'],
@@ -102,11 +107,15 @@ onUnmounted(() => {
       </div>
       <div class="flex flex-wrap gap-2">
         <button class="glass-button" @click="devices.load">
-          <span class="icon-[solar--refresh-outline] size-5" />
+          <span class="icon-[solar--refresh-bold-duotone] size-5" />
           <span>刷新</span>
         </button>
+        <RouterLink class="glass-button" to="/help">
+          <span class="icon-[solar--question-circle-bold-duotone] size-5" />
+          <span>连接帮助</span>
+        </RouterLink>
         <button class="glass-button" :class="previewEnabled ? 'glass-button-primary' : ''" @click="togglePreview">
-          <span class="icon-[solar--video-frame-play-horizontal-outline] size-5" />
+          <span :class="[previewEnabled ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
           <span>{{ previewEnabled ? '关闭预览' : '开启预览' }}</span>
         </button>
       </div>
@@ -125,10 +134,7 @@ onUnmounted(() => {
     <div class="glass-panel mb-4 flex min-w-0 items-center gap-3 p-3">
       <span class="icon-[solar--filter-outline] size-5 shrink-0 text-sky-500" />
       <span class="shrink-0 text-sm font-medium text-slate-600 dark:text-slate-300">筛选</span>
-      <select v-model="statusFilter" class="glass-input glass-select min-w-0 flex-1">
-        <option value="all">全部设备（{{ devices.devices.length }}）</option>
-        <option v-for="state in stateOptions" :key="state" :value="state">{{ t(`states.${state}`) }}（{{ counts[state] ?? 0 }}）</option>
-      </select>
+      <LiquidSelect v-model="statusFilter" class="min-w-0 flex-1" :options="statusOptions" />
     </div>
 
     <div v-if="filteredDevices.length === 0" class="glass-panel grid min-h-[420px] place-items-center p-8 text-center">

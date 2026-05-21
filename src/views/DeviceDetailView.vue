@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 interface AdbCommandResult {
   success: boolean
@@ -42,6 +43,7 @@ const activeTab = ref<'control' | 'terminal' | 'apps' | 'files' | 'hardware' | '
 const screenshotUrl = ref('')
 const streaming = ref(false)
 const controlEnabled = ref(false)
+const bundledApkInstalled = ref(false)
 const busy = ref(false)
 const message = ref('')
 const inputText = ref('')
@@ -53,6 +55,11 @@ const terminalCommand = ref('shell getprop ro.product.model')
 const terminalOutput = ref('')
 const packages = ref<PackageItem[]>([])
 const packageScope = ref<'all' | 'user' | 'system'>('all')
+const packageScopeOptions = [
+  { label: '全部软件', value: 'all' },
+  { label: '用户软件', value: 'user' },
+  { label: '系统软件', value: 'system' },
+]
 const packageFilter = ref('')
 const selectedPackage = ref('')
 const appInfo = ref('')
@@ -376,7 +383,8 @@ async function installBundledApk() {
       method: 'POST',
       body: JSON.stringify({}),
     })
-    message.value = result.success ? '内置 APK 已安装。' : result.stderr || result.stdout || '内置 APK 安装失败。'
+    bundledApkInstalled.value = result.success
+    message.value = result.success ? '内置 APK 已安装，请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : result.stderr || result.stdout || '内置 APK 安装失败。'
     notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert')
     await loadPackages()
   } catch (error) {
@@ -494,12 +502,12 @@ onUnmounted(stopTimer)
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-4 text-sm font-medium transition-all duration-300 hover:border-sky-300 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900" :disabled="!canUseAdb" @click="refreshScreenshot">
-          <span class="icon-[solar--refresh-outline] size-5" />
+        <button class="glass-button" :disabled="!canUseAdb" @click="refreshScreenshot">
+          <span class="icon-[solar--refresh-bold-duotone] size-5" />
           <span>刷新屏幕</span>
         </button>
-        <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60" :disabled="!canUseAdb" @click="streaming ? stopStream() : startStream()">
-          <span :class="[streaming ? 'icon-[solar--pause-circle-outline]' : 'icon-[solar--play-circle-outline]', 'size-5']" />
+        <button class="glass-button glass-button-primary" :disabled="!canUseAdb" @click="streaming ? stopStream() : startStream()">
+          <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
           <span>{{ streaming ? '停止投屏' : '开启投屏' }}</span>
         </button>
       </div>
@@ -531,8 +539,14 @@ onUnmounted(stopTimer)
       APK 已在线，但当前页面大部分控制功能依赖 ADB，相关按钮已禁用。
     </div>
     <div v-else-if="canUseAdb && !device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-      <span>ADB 已连接，但未检测到 APK。请安装内置 APK 后在手机上同意所需权限。</span>
-      <button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">安装内置 APK</button>
+      <span>{{ bundledApkInstalled ? 'APK 已安装，下一步请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : 'APK 通道尚未在线：如果尚未安装，请安装内置 APK；如果已经安装，请在手机上授予所需权限。' }}</span>
+      <div class="flex flex-wrap gap-2">
+        <button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">安装内置 APK</button>
+        <RouterLink class="glass-button" to="/help#apk-permissions">
+          <span class="icon-[solar--question-circle-bold-duotone] size-5" />
+          <span>权限帮助</span>
+        </RouterLink>
+      </div>
     </div>
 
     <div v-if="activeTab === 'control'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -615,11 +629,7 @@ onUnmounted(stopTimer)
     <div v-else-if="activeTab === 'apps'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div class="mb-3 flex flex-wrap gap-2">
-          <select v-model="packageScope" class="glass-input glass-select">
-            <option value="all">全部软件</option>
-            <option value="user">用户软件</option>
-            <option value="system">系统软件</option>
-          </select>
+          <LiquidSelect v-model="packageScope" class="min-w-40" :options="packageScopeOptions" />
           <input v-model="packageFilter" class="h-10 min-w-64 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="搜索包名" />
           <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-300 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="loadPackages">列出软件包</button>
           <label class="inline-flex h-10 cursor-pointer items-center rounded-md border border-slate-300 px-4 text-sm transition-all duration-300 hover:border-sky-300 dark:border-slate-700">

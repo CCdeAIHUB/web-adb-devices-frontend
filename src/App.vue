@@ -10,16 +10,16 @@ const { t } = useI18n()
 const toasts = ref<Array<{ id: number; message: string; type: 'success' | 'error' | 'info'; target?: string }>>([])
 
 const nav = [
-  ['dashboard', '/', 'icon-[solar--home-2-bold-duotone]'],
-  ['devices', '/devices', 'icon-[solar--devices-bold-duotone]'],
-  ['agent', '/agent', 'icon-[solar--magic-stick-3-bold-duotone]'],
-  ['tasks', '/tasks', 'icon-[solar--programming-bold-duotone]'],
-  ['settings', '/settings', 'icon-[solar--settings-bold-duotone]'],
+  ['dashboard', '/', 'icon-[solar--home-2-outline]'],
+  ['devices', '/devices', 'icon-[solar--devices-outline]'],
+  ['agent', '/agent', 'icon-[solar--magic-stick-3-outline]'],
+  ['tasks', '/tasks', 'icon-[solar--programming-outline]'],
+  ['settings', '/settings', 'icon-[solar--settings-outline]'],
 ] as const
 
 function pushToast(event: Event) {
   const detail = (event as CustomEvent).detail ?? {}
-  const toast = { id: Date.now() + Math.random(), message: detail.message || '?????', type: detail.type || 'info', target: detail.target }
+  const toast = { id: Date.now() + Math.random(), message: detail.message || '操作已完成', type: detail.type || 'info', target: detail.target }
   toasts.value.push(toast)
   window.setTimeout(() => {
     toasts.value = toasts.value.filter((item) => item.id !== toast.id)
@@ -56,10 +56,6 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
           <span>{{ t(`nav.${key}`) }}</span>
         </RouterLink>
       </nav>
-      <RouterLink to="/help" class="mt-4 flex h-10 w-full items-center gap-3 rounded-2xl px-3 text-sm text-slate-600 transition-all duration-300 hover:bg-white/50 hover:text-sky-700 dark:text-slate-300 dark:hover:bg-white/10">
-        <span class="icon-[solar--question-circle-bold-duotone] size-5" />
-        <span>??</span>
-      </RouterLink>
     </aside>
     <main :class="route.name === 'login' ? '' : 'pb-24 lg:pb-0 lg:pl-64'">
       <RouterView />

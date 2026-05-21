@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ApiError, api } from '@/api/client'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -94,6 +95,7 @@ const modelCatalog = {
 
 const providerTypes = Object.entries(modelCatalog).map(([value, item]) => ({ value, label: item.label }))
 const providerModelOptions = computed(() => modelCatalog[providerForm.providerType as keyof typeof modelCatalog]?.models ?? ['custom'])
+const providerModelSelectOptions = computed(() => providerModelOptions.value.map((model) => ({ label: model, value: model })))
 
 const sections: SettingSection[] = [
   {
@@ -166,7 +168,7 @@ const sections: SettingSection[] = [
       { key: 'advanced.exportConfig', label: '配置导入导出入口', type: 'text', readonly: true, placeholder: '后续版本启用' },
     ],
   },
-  { key: 'logs', icon: 'icon-[solar--document-text-bold-duotone]', fields: [] },
+  { key: 'logs', icon: 'icon-[solar--document-text-outline]', fields: [] },
 ]
 
 const defaultValues: Record<string, string> = Object.fromEntries(
@@ -349,7 +351,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">设置</h1>
       <button class="glass-button" :class="hasChanges ? 'glass-button-primary ring-2 ring-sky-200' : ''" :disabled="saving || !hasChanges" @click="saveSettings">
-        <span class="icon-[solar--diskette-outline] size-5" />
+        <span class="icon-[solar--diskette-bold-duotone] size-5" />
         <span>{{ saving ? '保存中' : hasChanges ? '保存更改' : '已保存' }}</span>
       </button>
     </div>
@@ -384,12 +386,12 @@ watch(() => providerForm.providerType, useProviderTemplate)
               <span>刷新</span>
             </button>
           </div>
-          <div class="overflow-hidden rounded-2xl border border-white/45 bg-white/35 dark:border-white/10 dark:bg-white/5">
-            <div class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
+          <div class="overflow-auto rounded-2xl border border-white/45 bg-white/35 dark:border-white/10 dark:bg-white/5">
+            <div class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
               <span>时间</span><span>级别</span><span>模块</span><span>消息</span>
             </div>
-            <div v-for="log in logs" :key="log.id" class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
-              <span class="whitespace-normal break-words text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
+            <div v-for="log in logs" :key="log.id" class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
+              <span class="whitespace-nowrap text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
               <span class="font-medium">{{ log.level }}</span>
               <span>{{ log.module }}</span>
               <span class="min-w-0 break-words">{{ log.message }}</span>
@@ -401,9 +403,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           <div class="grid gap-3 md:grid-cols-2">
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型类型</span>
-              <select v-model="providerForm.providerType" class="glass-input glass-select">
-                <option v-for="item in providerTypes" :key="item.value" :value="item.value">{{ item.label }}</option>
-              </select>
+              <LiquidSelect v-model="providerForm.providerType" :options="providerTypes" />
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">显示名称</span>
@@ -411,9 +411,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型版本</span>
-              <select v-model="providerForm.model" class="glass-input glass-select">
-                <option v-for="model in providerModelOptions" :key="model" :value="model">{{ model }}</option>
-              </select>
+              <LiquidSelect v-model="providerForm.model" :options="providerModelSelectOptions" />
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">版本备注</span>
@@ -431,7 +429,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
 
           <div class="flex flex-wrap items-center gap-3">
             <button class="glass-button glass-button-primary" :disabled="providerSaving" @click="addProvider">
-              <span class="icon-[solar--add-circle-outline] size-5" />
+              <span class="icon-[solar--add-circle-bold-duotone] size-5" />
               <span>{{ providerSaving ? '验证中' : '添加模型' }}</span>
             </button>
             <span v-if="providerMessage" class="text-sm" :class="providerMessage.includes('失败') || providerMessage.includes('无法') || providerMessage.includes('无效') ? 'text-rose-600' : 'text-emerald-600'">
@@ -486,9 +484,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           <label v-for="field in selected.fields" :key="field.key" class="grid gap-3 px-5 py-4 sm:grid-cols-[220px_1fr] sm:items-center">
             <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ field.label }}</span>
 
-            <select v-if="field.type === 'select'" class="glass-input glass-select" :value="fieldValue(field.key)" :disabled="field.readonly" @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)">
-              <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
+            <LiquidSelect v-if="field.type === 'select'" :model-value="fieldValue(field.key)" :options="field.options ?? []" :disabled="field.readonly" @update:model-value="setFieldValue(field.key, $event)" />
 
             <button v-else-if="field.type === 'toggle'" type="button" class="flex h-8 w-14 items-center rounded-full p-1 transition-all duration-300" :class="fieldValue(field.key) === 'true' ? 'bg-sky-500/80 shadow-inner' : 'bg-white/45 ring-1 ring-white/60 dark:bg-white/10 dark:ring-white/10'" :disabled="field.readonly" @click="setFieldValue(field.key, fieldValue(field.key) !== 'true')">
               <span class="size-6 rounded-full bg-white shadow transition-all duration-300" :class="fieldValue(field.key) === 'true' ? 'translate-x-6' : ''" />

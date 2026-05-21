@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 interface AutomationTask {
   id: string
@@ -43,6 +44,12 @@ const triggers = [
   { value: 'notification', label: '收到通知', placeholder: '应用包名或通知关键词' },
   { value: 'battery', label: '电量条件', placeholder: '例如：低于 20%' },
   { value: 'network', label: '网络变化', placeholder: 'WiFi / 蜂窝 / 断网' },
+]
+
+const frameworkOptions = [
+  { value: 'appium-adb', label: 'Appium 2 + ADB' },
+  { value: 'adb-shell', label: '纯 ADB Shell' },
+  { value: 'apk-companion', label: 'APK Companion 能力' },
 ]
 
 const selectedTrigger = computed(() => triggers.find((item) => item.value === form.triggerType) ?? triggers[0])
@@ -151,14 +158,8 @@ onMounted(load)
 
           <div class="grid gap-3 md:grid-cols-2">
             <input v-model="form.name" class="glass-input" placeholder="任务名称" />
-            <select v-model="form.framework" class="glass-input glass-select">
-              <option value="appium-adb">Appium 2 + ADB</option>
-              <option value="adb-shell">纯 ADB Shell</option>
-              <option value="apk-companion">APK Companion 能力</option>
-            </select>
-            <select v-model="form.triggerType" class="glass-input glass-select">
-              <option v-for="trigger in triggers" :key="trigger.value" :value="trigger.value">{{ trigger.label }}</option>
-            </select>
+            <LiquidSelect v-model="form.framework" :options="frameworkOptions" />
+            <LiquidSelect v-model="form.triggerType" :options="triggers" />
             <input v-model="form.triggerConfig" class="glass-input" :placeholder="selectedTrigger.placeholder" />
           </div>
 

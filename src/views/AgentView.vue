@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 interface AiProvider {
   id: string
@@ -60,6 +61,12 @@ const sortedConversations = computed(() => [...conversations.value].sort((a, b) 
 }))
 const messages = computed(() => activeConversation.value?.messages ?? [])
 const usableProviders = computed(() => providers.value.filter((provider) => provider.enabled && provider.model))
+const providerOptions = computed(() => usableProviders.value.map((provider) => ({ label: `${provider.displayName} / ${provider.model}`, value: provider.id })))
+const permissionOptions = [
+  { label: '默认权限', value: 'Default' },
+  { label: '自动审批低风险操作', value: 'AutoApproval' },
+  { label: '完全权限', value: 'FullAccess' },
+]
 const selectedDeviceSummary = computed(() => selectedDevices.value.length === 0 ? '未选择设备' : `已选择 ${selectedDevices.value.length} 台设备`)
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -344,15 +351,8 @@ onMounted(load)
 
         <div class="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
           <div class="flex flex-wrap gap-2">
-            <select v-model="selectedProvider" class="glass-input glass-select">
-              <option value="" disabled>选择模型</option>
-              <option v-for="provider in usableProviders" :key="provider.id" :value="provider.id">{{ provider.displayName }} · {{ provider.model }}</option>
-            </select>
-            <select v-model="permissionMode" class="glass-input glass-select">
-              <option value="Default">默认权限</option>
-              <option value="AutoApproval">自动审批低风险操作</option>
-              <option value="FullAccess">完全权限</option>
-            </select>
+            <LiquidSelect v-model="selectedProvider" class="min-w-52" :options="providerOptions" placeholder="选择模型" />
+            <LiquidSelect v-model="permissionMode" class="min-w-52" :options="permissionOptions" />
             <div class="relative">
               <button class="glass-button" @click="deviceMenuOpen = !deviceMenuOpen">
                 <span class="icon-[solar--devices-outline] size-5" />

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useDeviceStore, type AdbScannedDevice, type DeviceRecord } from '@/stores/devices'
 import { ApiError, api } from '@/api/client'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 const { t } = useI18n()
 const devices = useDeviceStore()
@@ -75,6 +76,8 @@ const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((devic
 const hasAnyScan = computed(() => Boolean(devices.adbScan))
 const groups = computed(() => [...new Set(devices.devices.map((device) => device.group).filter(Boolean))] as string[])
 const tags = computed(() => [...new Set(devices.devices.flatMap((device) => device.tags ?? []))])
+const groupOptions = computed(() => [{ label: '全部分组', value: 'all' }, ...groups.value.map((group) => ({ label: group, value: group }))])
+const tagOptions = computed(() => [{ label: '全部标签', value: 'all' }, ...tags.value.map((tag) => ({ label: tag, value: tag }))])
 const filteredDevices = computed(() => {
   const keyword = searchText.value.trim().toLowerCase()
   return devices.devices.filter((device) => {
@@ -319,14 +322,8 @@ onUnmounted(stopScanTimer)
 
     <div class="glass-panel mb-4 grid gap-3 p-3 lg:grid-cols-[1fr_180px_180px]">
       <input v-model="searchText" class="glass-input" placeholder="搜索设备名称、备注、ADB serial" />
-      <select v-model="groupFilter" class="glass-input glass-select">
-        <option value="all">全部分组</option>
-        <option v-for="group in groups" :key="group" :value="group">{{ group }}</option>
-      </select>
-      <select v-model="tagFilter" class="glass-input glass-select">
-        <option value="all">全部标签</option>
-        <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
-      </select>
+      <LiquidSelect v-model="groupFilter" :options="groupOptions" />
+      <LiquidSelect v-model="tagFilter" :options="tagOptions" />
     </div>
 
     <div class="mb-4 grid gap-3 md:grid-cols-3">

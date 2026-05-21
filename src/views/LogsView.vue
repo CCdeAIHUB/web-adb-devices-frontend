@@ -11,13 +11,13 @@ onMounted(async () => {
 
 <template>
   <section class="liquid-shell min-h-screen p-4 text-slate-950 dark:text-slate-100 sm:p-6">
-    <h1 class="mb-6 text-xl font-semibold">??</h1>
-    <div class="glass-panel overflow-hidden">
-      <div class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
-        <span>??</span><span>??</span><span>??</span><span>??</span>
+    <h1 class="mb-6 text-xl font-semibold">运行日志</h1>
+    <div class="glass-panel overflow-auto">
+      <div class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
+        <span>时间</span><span>级别</span><span>模块</span><span>消息</span>
       </div>
-      <div v-for="log in logs" :key="log.id" class="grid grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
-        <span class="whitespace-normal break-words text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
+      <div v-for="log in logs" :key="log.id" class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
+        <span class="whitespace-nowrap text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
         <span class="font-medium">{{ log.level }}</span>
         <span>{{ log.module }}</span>
         <span class="min-w-0 break-words">{{ log.message }}</span>
