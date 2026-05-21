@@ -21,7 +21,7 @@ const filteredDevices = computed(() => statusFilter.value === 'all' ? devices.de
 const counts = computed(() => Object.fromEntries(stateOptions.map((state) => [state, devices.devices.filter((device) => device.displayState === state).length])))
 
 function canPreview(device: DeviceRecord) {
-  return previewEnabled.value && Boolean(device.temporaryAdbSerial || device.deviceId.startsWith('adb:')) && device.displayState !== 'Offline'
+  return previewEnabled.value && Boolean(device.apkVersion) && Boolean(device.temporaryAdbSerial || device.deviceId.startsWith('adb:')) && device.displayState !== 'Offline'
 }
 
 function previewUrl(device: DeviceRecord) {
@@ -33,6 +33,12 @@ function connectionLabel(device: DeviceRecord) {
   if (!device.apkVersion) return '未安装 APK'
   if (!device.temporaryAdbSerial) return 'APK 在线'
   return device.displayState
+}
+
+function deviceAspectRatio(device: DeviceRecord) {
+  const width = device.screenWidth > 0 ? device.screenWidth : 9
+  const height = device.screenHeight > 0 ? device.screenHeight : 19.5
+  return `${width} / ${height}`
 }
 
 function stateClass(state: string) {
@@ -99,21 +105,13 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="mb-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-      <button class="glass-panel p-4 text-left transition-all duration-300" :class="statusFilter === 'all' ? 'ring-2 ring-sky-300' : ''" @click="statusFilter = 'all'">
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-slate-500">全部</span>
-          <span class="icon-[solar--devices-outline] size-5 text-sky-500" />
-        </div>
-        <strong class="mt-2 block text-2xl">{{ devices.devices.length }}</strong>
-      </button>
-      <button v-for="state in stateOptions" :key="state" class="glass-panel p-4 text-left transition-all duration-300" :class="statusFilter === state ? 'ring-2 ring-sky-300' : ''" @click="statusFilter = state">
-        <div class="flex items-center justify-between">
-          <span class="text-sm text-slate-500">{{ t(`states.${state}`) }}</span>
-          <span class="size-2 rounded-full" :class="stateClass(state)" />
-        </div>
-        <strong class="mt-2 block text-2xl">{{ counts[state] ?? 0 }}</strong>
-      </button>
+    <div class="glass-panel mb-4 flex min-w-0 items-center gap-3 p-3">
+      <span class="icon-[solar--filter-outline] size-5 shrink-0 text-sky-500" />
+      <span class="shrink-0 text-sm font-medium text-slate-600 dark:text-slate-300">筛选</span>
+      <select v-model="statusFilter" class="glass-input min-w-0 flex-1">
+        <option value="all">全部设备（{{ devices.devices.length }}）</option>
+        <option v-for="state in stateOptions" :key="state" :value="state">{{ t(`states.${state}`) }}（{{ counts[state] ?? 0 }}）</option>
+      </select>
     </div>
 
     <div v-if="filteredDevices.length === 0" class="glass-panel grid min-h-[420px] place-items-center p-8 text-center">
@@ -135,7 +133,7 @@ onUnmounted(() => {
         class="glass-panel group overflow-hidden text-left transition-all duration-300 hover:-translate-y-0.5"
         :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }"
       >
-        <div class="relative aspect-[9/16] max-h-[360px] overflow-hidden bg-slate-950/90">
+        <div class="relative mx-auto w-full max-w-[240px] overflow-hidden bg-slate-950/90" :style="{ aspectRatio: deviceAspectRatio(device) }">
           <img v-if="canPreview(device)" :src="previewUrl(device)" class="h-full w-full object-contain opacity-95 transition-opacity duration-300" alt="设备当前界面" />
           <div v-else class="grid h-full place-items-center text-center text-slate-300">
             <div>

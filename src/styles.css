@@ -95,6 +95,15 @@ textarea {
   color: white;
 }
 
+.glass-button-primary:hover {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.92), rgba(37, 99, 235, 0.86));
+  color: white;
+}
+
+.glass-button-primary:hover span {
+  color: white;
+}
+
 .dark .glass-button {
   border-color: rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.1);

@@ -196,6 +196,7 @@ const values = reactive<Record<string, string>>({})
 const runtime = ref<Record<string, unknown>>({})
 const saving = ref(false)
 const savedAt = ref('')
+const initialSnapshot = ref('')
 const providerSaving = ref(false)
 const providerMessage = ref('')
 const providers = ref<AiProvider[]>([])
@@ -224,6 +225,8 @@ const runtimeRows = computed(() => [
   ['系统', String(runtime.value.os ?? '-')],
   ['数据目录', String(runtime.value.dataRoot ?? '-')],
 ])
+const settingsSnapshot = computed(() => JSON.stringify(Object.fromEntries(Object.entries(values).sort(([a], [b]) => a.localeCompare(b)))))
+const hasChanges = computed(() => initialSnapshot.value !== '' && settingsSnapshot.value !== initialSnapshot.value)
 
 function fieldValue(key: string) {
   return values[key] ?? defaultValues[key] ?? ''
@@ -256,6 +259,7 @@ async function loadSettings() {
   values['network.adminPort'] = String(runtime.value.adminPort ?? values['network.adminPort'] ?? '6333')
   values['network.apkWsPort'] = String(runtime.value.apkWsPort ?? values['network.apkWsPort'] ?? '6334')
   applyAppearance()
+  initialSnapshot.value = settingsSnapshot.value
 }
 
 async function loadProviders() {
@@ -306,6 +310,7 @@ async function saveSettings() {
       values[key] = value ?? defaultValues[key] ?? ''
     })
     applyAppearance()
+    initialSnapshot.value = settingsSnapshot.value
     savedAt.value = new Date().toLocaleTimeString()
   } finally {
     saving.value = false
@@ -315,7 +320,6 @@ async function saveSettings() {
 onMounted(async () => {
   await Promise.all([loadSettings(), loadProviders()])
 })
-watch(() => [values['ui.language'], values['ui.theme']], applyAppearance)
 watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
@@ -323,9 +327,9 @@ watch(() => providerForm.providerType, useProviderTemplate)
   <section class="min-h-screen liquid-shell p-4 text-slate-950 dark:text-slate-100 sm:p-6">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">设置</h1>
-      <button class="glass-button glass-button-primary" :disabled="saving" @click="saveSettings">
+      <button class="glass-button" :class="hasChanges ? 'glass-button-primary ring-2 ring-sky-200' : ''" :disabled="saving || !hasChanges" @click="saveSettings">
         <span class="icon-[solar--diskette-outline] size-5" />
-        <span>{{ saving ? '保存中' : '保存' }}</span>
+        <span>{{ saving ? '保存中' : hasChanges ? '保存更改' : '已保存' }}</span>
       </button>
     </div>
 

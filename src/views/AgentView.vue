@@ -15,7 +15,7 @@ interface AgentRunResponse {
   runId: string
   status: string
   message: string
-  plan: Array<{ title: string; detail: string; risk: string; requiresApproval: boolean }>
+  plan?: Array<{ title: string; detail: string; risk: string; requiresApproval: boolean }>
 }
 
 interface AttachmentItem {
@@ -91,10 +91,7 @@ async function sendMessage() {
         attachments: attachments.value,
       }),
     })
-    const planText = response.plan?.length
-      ? response.plan.map((step, index) => `${index + 1}. ${step.title}：${step.detail}${step.requiresApproval ? '（需要确认）' : ''}`).join('\n')
-      : 'Agent 已进入设备操作流程。'
-    messages.value.push({ role: 'agent', text: `${response.message}\n运行编号：${response.runId}\n${planText}` })
+    messages.value.push({ role: 'agent', text: response.message })
     attachments.value = []
   } catch (error) {
     const message = error instanceof ApiError ? error.message : 'Agent 请求失败。'
