@@ -563,7 +563,7 @@ onUnmounted(stopTimer)
     <div v-else-if="activeTab === 'apps'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <div class="mb-3 flex flex-wrap gap-2">
-          <select v-model="packageScope" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950">
+          <select v-model="packageScope" class="glass-input glass-select">
             <option value="all">全部软件</option>
             <option value="user">用户软件</option>
             <option value="system">系统软件</option>

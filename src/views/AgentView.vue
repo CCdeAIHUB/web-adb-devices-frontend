@@ -31,6 +31,7 @@ interface ChatMessage {
 interface Conversation {
   id: string
   title: string
+  pinned?: boolean
   createdAt: string
   updatedAt: string
   messages: ChatMessage[]
@@ -53,6 +54,10 @@ const notice = ref('')
 const attachments = ref<AttachmentItem[]>([])
 
 const activeConversation = computed(() => conversations.value.find((item) => item.id === activeConversationId.value) ?? conversations.value[0])
+const sortedConversations = computed(() => [...conversations.value].sort((a, b) => {
+  if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1
+  return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+}))
 const messages = computed(() => activeConversation.value?.messages ?? [])
 const usableProviders = computed(() => providers.value.filter((provider) => provider.enabled && provider.model))
 const selectedDeviceSummary = computed(() => selectedDevices.value.length === 0 ? '未选择设备' : `已选择 ${selectedDevices.value.length} 台设备`)
@@ -94,6 +99,77 @@ function saveConversations() {
 function switchConversation(id: string) {
   activeConversationId.value = id
   selectedDevices.value = activeConversation.value?.selectedDevices ?? []
+}
+
+function renameConversation(conversation: Conversation) {
+  const nextTitle = window.prompt('重命名对话', conversation.title)?.trim()
+  if (!nextTitle) return
+  conversation.title = nextTitle.slice(0, 40)
+  conversation.updatedAt = new Date().toISOString()
+  saveConversations()
+  notify('对话已重命名。', 'success')
+}
+
+function deleteConversation(id: string) {
+  if (conversations.value.length <= 1) {
+    notify('至少保留一个对话。', 'info')
+    return
+  }
+
+  if (!window.confirm('删除这个对话？此操作不会删除设备或任务。')) return
+  conversations.value = conversations.value.filter((item) => item.id !== id)
+  if (activeConversationId.value === id) {
+    activeConversationId.value = sortedConversations.value[0]?.id ?? conversations.value[0]?.id ?? ''
+    selectedDevices.value = activeConversation.value?.selectedDevices ?? []
+  }
+  saveConversations()
+  notify('对话已删除。', 'success')
+}
+
+function togglePin(conversation: Conversation) {
+  conversation.pinned = !conversation.pinned
+  conversation.updatedAt = new Date().toISOString()
+  saveConversations()
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function exportConversationPdf(conversation: Conversation) {
+  const popup = window.open('', '_blank', 'width=860,height=980')
+  if (!popup) {
+    notify('浏览器阻止了导出窗口，请允许弹窗后重试。', 'error')
+    return
+  }
+
+  const body = conversation.messages.map((message) => `
+    <section class="message ${message.role}">
+      <strong>${message.role === 'user' ? '用户' : 'AI Agent'}</strong>
+      <p>${escapeHtml(message.text).replaceAll('\n', '<br>')}</p>
+    </section>
+  `).join('')
+
+  popup.document.write(`<!doctype html>
+    <html><head><meta charset="utf-8"><title>${escapeHtml(conversation.title)}</title>
+    <style>
+      body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:36px;color:#0f172a}
+      h1{font-size:22px;margin:0 0 6px}.meta{color:#64748b;font-size:12px;margin-bottom:24px}
+      .message{break-inside:avoid;border:1px solid #e2e8f0;border-radius:16px;padding:14px 16px;margin:12px 0}
+      .user{background:#eff6ff}.agent{background:#f8fafc}strong{display:block;margin-bottom:8px}p{white-space:normal;margin:0;line-height:1.65}
+    </style></head><body>
+    <h1>${escapeHtml(conversation.title)}</h1>
+    <div class="meta">导出时间：${new Date().toLocaleString()}</div>
+    ${body}
+    <script>window.onload=()=>setTimeout(()=>window.print(),120)<\/script>
+    </body></html>`)
+  popup.document.close()
+  notify('已打开导出窗口，可选择保存为 PDF。', 'success')
 }
 
 function pushMessage(message: ChatMessage) {
@@ -191,16 +267,37 @@ onMounted(load)
         </button>
       </div>
       <div class="grid gap-2 overflow-auto">
-        <button
-          v-for="conversation in conversations"
+        <div
+          v-for="conversation in sortedConversations"
           :key="conversation.id"
-          class="rounded-2xl px-3 py-2 text-left text-sm transition-all duration-300"
+          class="group rounded-2xl px-3 py-2 text-left text-sm transition-all duration-300"
           :class="conversation.id === activeConversationId ? 'bg-white/70 text-sky-700 shadow-sm dark:bg-white/15 dark:text-sky-200' : 'hover:bg-white/40 dark:hover:bg-white/10'"
           @click="switchConversation(conversation.id)"
         >
-          <span class="block truncate font-medium">{{ conversation.title }}</span>
-          <span class="mt-1 block text-xs text-slate-500">{{ new Date(conversation.updatedAt).toLocaleString() }}</span>
-        </button>
+          <div class="flex items-start gap-2">
+            <button class="min-w-0 flex-1 text-left" @click.stop="switchConversation(conversation.id)">
+              <span class="flex items-center gap-1 truncate font-medium">
+                <span v-if="conversation.pinned" class="icon-[solar--pin-outline] size-4 shrink-0 text-sky-500" />
+                <span class="truncate">{{ conversation.title }}</span>
+              </span>
+              <span class="mt-1 block text-xs text-slate-500">{{ new Date(conversation.updatedAt).toLocaleString() }}</span>
+            </button>
+            <div class="flex shrink-0 items-center gap-1 opacity-100 lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100">
+              <button class="rounded-full p-1.5 hover:bg-white/55 dark:hover:bg-white/10" title="置顶" @click.stop="togglePin(conversation)">
+                <span :class="[conversation.pinned ? 'icon-[solar--pin-bold] text-sky-500' : 'icon-[solar--pin-outline]', 'size-4']" />
+              </button>
+              <button class="rounded-full p-1.5 hover:bg-white/55 dark:hover:bg-white/10" title="重命名" @click.stop="renameConversation(conversation)">
+                <span class="icon-[solar--pen-new-square-outline] size-4" />
+              </button>
+              <button class="rounded-full p-1.5 hover:bg-white/55 dark:hover:bg-white/10" title="导出 PDF" @click.stop="exportConversationPdf(conversation)">
+                <span class="icon-[solar--share-outline] size-4" />
+              </button>
+              <button class="rounded-full p-1.5 text-rose-600 hover:bg-rose-50/80 dark:hover:bg-rose-950" title="删除" @click.stop="deleteConversation(conversation.id)">
+                <span class="icon-[solar--trash-bin-trash-outline] size-4" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -247,11 +344,11 @@ onMounted(load)
 
         <div class="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
           <div class="flex flex-wrap gap-2">
-            <select v-model="selectedProvider" class="glass-input">
+            <select v-model="selectedProvider" class="glass-input glass-select">
               <option value="" disabled>选择模型</option>
               <option v-for="provider in usableProviders" :key="provider.id" :value="provider.id">{{ provider.displayName }} · {{ provider.model }}</option>
             </select>
-            <select v-model="permissionMode" class="glass-input">
+            <select v-model="permissionMode" class="glass-input glass-select">
               <option value="Default">默认权限</option>
               <option value="AutoApproval">自动审批低风险操作</option>
               <option value="FullAccess">完全权限</option>
@@ -261,9 +358,9 @@ onMounted(load)
                 <span class="icon-[solar--devices-outline] size-5" />
                 <span>{{ selectedDeviceSummary }}</span>
               </button>
-              <div v-if="deviceMenuOpen" class="glass-panel absolute bottom-12 left-0 z-20 grid max-h-80 w-80 gap-2 overflow-auto p-3">
+              <div v-if="deviceMenuOpen" class="glass-menu absolute bottom-12 left-0 z-20 grid max-h-80 w-80 gap-2 overflow-auto p-3">
                 <label v-for="device in devices.devices" :key="device.deviceId" class="flex cursor-pointer items-start gap-3 rounded-2xl px-3 py-2 hover:bg-white/40 dark:hover:bg-white/10">
-                  <input type="checkbox" class="mt-1 size-4" :checked="selectedDevices.includes(device.deviceId)" @change="toggleDevice(device.deviceId)" />
+                  <input type="checkbox" class="glass-checkbox mt-1" :checked="selectedDevices.includes(device.deviceId)" @change="toggleDevice(device.deviceId)" />
                   <span class="min-w-0">
                     <span class="block truncate text-sm font-medium">{{ device.model || device.deviceId }}</span>
                     <span class="block truncate text-xs text-slate-500">{{ device.displayState }} · {{ device.temporaryAdbSerial || device.apkVersion || '未连接' }}</span>
@@ -273,7 +370,7 @@ onMounted(load)
               </div>
             </div>
             <label class="glass-button cursor-pointer">
-              <input type="checkbox" class="size-4" v-model="webSearchEnabled" />
+              <input type="checkbox" class="glass-checkbox" v-model="webSearchEnabled" />
               <span>联网搜索</span>
             </label>
             <label class="glass-button cursor-pointer">

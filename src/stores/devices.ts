@@ -5,6 +5,9 @@ export interface DeviceRecord {
   deviceId: string
   temporaryAdbSerial?: string
   model?: string
+  remark?: string
+  group?: string
+  tags: string[]
   androidVersion?: string
   apkVersion?: string
   screenWidth: number

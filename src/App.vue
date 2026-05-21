@@ -2,6 +2,7 @@
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { onMounted, onUnmounted, ref } from 'vue'
+import logoUrl from '@/assets/logo.svg'
 
 const route = useRoute()
 const { t } = useI18n()
@@ -36,9 +37,7 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
       class="fixed inset-y-0 left-0 hidden w-64 border-r border-white/45 bg-white/50 p-4 shadow-[12px_0_40px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/45 lg:block"
     >
       <div class="mb-8 flex items-center gap-3">
-        <span class="grid size-9 place-items-center rounded-2xl bg-gradient-to-br from-sky-400 via-blue-500 to-fuchsia-500 text-white shadow-lg shadow-sky-500/20">
-          <span class="icon-[solar--smartphone-update-outline] size-6" />
-        </span>
+        <img :src="logoUrl" alt="Web ADB Devices" class="size-10 rounded-2xl shadow-lg shadow-sky-500/20" />
         <strong>Web ADB Devices</strong>
       </div>
       <nav class="space-y-1">

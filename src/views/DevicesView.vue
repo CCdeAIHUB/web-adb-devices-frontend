@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useDeviceStore, type AdbScannedDevice } from '@/stores/devices'
+import { useDeviceStore, type AdbScannedDevice, type DeviceRecord } from '@/stores/devices'
 import { ApiError, api } from '@/api/client'
 
 const { t } = useI18n()
@@ -18,6 +18,10 @@ const commandMessage = ref('')
 const environmentLoading = ref(false)
 const adbInstalling = ref(false)
 const environment = ref<EnvironmentSelfCheck | null>(null)
+const editingDeviceId = ref('')
+const metadataSaving = ref(false)
+const metadataForm = ref({ remark: '', group: '', tags: '' })
+const apkDownloadUrl = 'https://cccode-1258874563.cos.ap-beijing.myqcloud.com/app-release-unsigned.apk'
 let scanTimer: ReturnType<typeof window.setInterval> | undefined
 
 interface AdbCommandResult {
@@ -83,6 +87,49 @@ async function refreshAll() {
 
 async function scanAdb() {
   await devices.scanAdb()
+}
+
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type } }))
+}
+
+function beginEditDevice(device: DeviceRecord) {
+  editingDeviceId.value = device.deviceId
+  metadataForm.value = {
+    remark: device.remark ?? '',
+    group: device.group ?? '',
+    tags: (device.tags ?? []).join(', '),
+  }
+}
+
+function cancelEditDevice() {
+  editingDeviceId.value = ''
+}
+
+async function saveDeviceMetadata(deviceId: string) {
+  metadataSaving.value = true
+  try {
+    await api<DeviceRecord>(`/api/devices/${encodeURIComponent(deviceId)}/metadata`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        remark: metadataForm.value.remark,
+        group: metadataForm.value.group,
+        tags: metadataForm.value.tags.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean),
+      }),
+    })
+    await devices.load()
+    editingDeviceId.value = ''
+    notify('设备信息已保存。', 'success')
+  } finally {
+    metadataSaving.value = false
+  }
+}
+
+async function deleteDevice(device: DeviceRecord) {
+  if (!window.confirm(`删除设备记录：${device.remark || device.model || device.deviceId}？`)) return
+  await api(`/api/devices/${encodeURIComponent(device.deviceId)}`, { method: 'DELETE' })
+  await devices.load()
+  notify('设备已删除。', 'success')
 }
 
 function localizeAdbError(result: AdbCommandResult) {
@@ -258,24 +305,42 @@ onUnmounted(stopScanTimer)
         <thead class="bg-slate-100 text-slate-500 dark:bg-slate-800">
           <tr>
             <th class="px-4 py-3">设备</th>
+            <th class="px-4 py-3">备注/分组</th>
             <th class="px-4 py-3">状态</th>
             <th class="px-4 py-3">APK</th>
             <th class="px-4 py-3">ADB</th>
             <th class="px-4 py-3">更新时间</th>
+            <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="devices.devices.length === 0" class="border-t border-slate-100 dark:border-slate-800">
-            <td colspan="5" class="px-4 py-10 text-center text-slate-500">
+            <td colspan="7" class="px-4 py-10 text-center text-slate-500">
               <button class="text-sky-600 hover:underline dark:text-sky-300" @click="openConnect('usb')">添加第一台设备</button>
             </td>
           </tr>
           <tr v-for="device in devices.devices" :key="device.deviceId" class="border-t border-slate-100 dark:border-slate-800">
             <td class="px-4 py-3">
               <RouterLink class="font-medium text-sky-700 hover:underline dark:text-sky-300" :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }">
-                {{ device.model || device.deviceId }}
+                {{ device.remark || device.model || device.deviceId }}
               </RouterLink>
               <div class="mt-1 text-xs text-slate-500">{{ device.deviceId }}</div>
+            </td>
+            <td class="px-4 py-3">
+              <div v-if="editingDeviceId === device.deviceId" class="grid min-w-[220px] gap-2">
+                <input v-model="metadataForm.remark" class="glass-input h-9" placeholder="自定义备注" />
+                <div class="grid grid-cols-2 gap-2">
+                  <input v-model="metadataForm.group" class="glass-input h-9" placeholder="分组" />
+                  <input v-model="metadataForm.tags" class="glass-input h-9" placeholder="标签，逗号分隔" />
+                </div>
+              </div>
+              <div v-else>
+                <div class="text-sm text-slate-700 dark:text-slate-200">{{ device.group || '未分组' }}</div>
+                <div class="mt-1 flex max-w-[260px] flex-wrap gap-1">
+                  <span v-for="tag in device.tags ?? []" :key="tag" class="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700 dark:bg-sky-950 dark:text-sky-200">{{ tag }}</span>
+                  <span v-if="!(device.tags ?? []).length && !device.remark" class="text-xs text-slate-400">未设置</span>
+                </div>
+              </div>
             </td>
             <td class="px-4 py-3">
               <span class="rounded-full px-2.5 py-1 text-xs font-medium" :class="stateClass(device.displayState)">
@@ -285,6 +350,20 @@ onUnmounted(stopScanTimer)
             <td class="px-4 py-3">{{ device.apkVersion || '-' }}</td>
             <td class="px-4 py-3">{{ device.temporaryAdbSerial || '-' }}</td>
             <td class="px-4 py-3 text-slate-500">{{ new Date(device.updatedAt).toLocaleString() }}</td>
+            <td class="px-4 py-3 text-right">
+              <div v-if="editingDeviceId === device.deviceId" class="flex justify-end gap-2">
+                <button class="glass-button h-9 px-3" :disabled="metadataSaving" @click="saveDeviceMetadata(device.deviceId)">保存</button>
+                <button class="glass-button h-9 px-3" @click="cancelEditDevice">取消</button>
+              </div>
+              <div v-else class="flex justify-end gap-2">
+                <button class="rounded-xl p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" title="编辑设备信息" @click="beginEditDevice(device)">
+                  <span class="icon-[solar--pen-new-square-outline] size-5" />
+                </button>
+                <button class="rounded-xl p-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950" title="删除设备" @click="deleteDevice(device)">
+                  <span class="icon-[solar--trash-bin-trash-outline] size-5" />
+                </button>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -337,6 +416,11 @@ onUnmounted(stopScanTimer)
               <span>{{ adbInstalling ? '下载中' : '自动下载 ADB' }}</span>
             </button>
           </div>
+        </div>
+
+        <div class="border-b border-sky-200 bg-sky-50/80 px-5 py-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/70 dark:text-sky-100">
+          APK 固定下载地址：
+          <a class="font-medium underline-offset-2 hover:underline" :href="apkDownloadUrl" target="_blank" rel="noreferrer">{{ apkDownloadUrl }}</a>
         </div>
 
         <div class="grid min-h-0 flex-1 lg:grid-cols-[260px_1fr]">

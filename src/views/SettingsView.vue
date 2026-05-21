@@ -116,16 +116,6 @@ const sections: SettingSection[] = [
     ],
   },
   {
-    key: 'resources',
-    icon: 'icon-[solar--download-minimalistic-outline]',
-    fields: [
-      { key: 'resources.manifestUrl', label: '远程资源 JSON 地址', type: 'text', placeholder: 'https://...' },
-      { key: 'resources.verifySignature', label: '校验资源签名', type: 'toggle' },
-      { key: 'resources.autoDownloadAdb', label: '缺失时自动下载私有 ADB', type: 'toggle' },
-      { key: 'resources.autoDownloadApk', label: '缺失时自动下载 APK', type: 'toggle' },
-    ],
-  },
-  {
     key: 'devices',
     icon: 'icon-[solar--devices-outline]',
     fields: [
@@ -177,9 +167,6 @@ const defaultValues: Record<string, string> = Object.fromEntries(
       if (field.key === 'devices.autoInstallApk') return [field.key, 'true']
       if (field.key === 'devices.autoLaunchApk') return [field.key, 'true']
       if (field.key === 'devices.keepAlive') return [field.key, 'true']
-      if (field.key === 'resources.autoDownloadAdb') return [field.key, 'true']
-      if (field.key === 'resources.autoDownloadApk') return [field.key, 'true']
-      if (field.key === 'resources.verifySignature') return [field.key, 'true']
       if (field.key === 'devices.wirelessPairTimeout') return [field.key, '15']
       if (field.key === 'media.previewRefreshSeconds') return [field.key, '8']
       if (field.key === 'media.previewMaxWidth') return [field.key, '360']
@@ -367,7 +354,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           <div class="grid gap-3 md:grid-cols-2">
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型类型</span>
-              <select v-model="providerForm.providerType" class="glass-input">
+              <select v-model="providerForm.providerType" class="glass-input glass-select">
                 <option v-for="item in providerTypes" :key="item.value" :value="item.value">{{ item.label }}</option>
               </select>
             </label>
@@ -377,7 +364,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
             </label>
             <label class="grid gap-2 text-sm">
               <span class="font-medium text-slate-700 dark:text-slate-200">模型版本</span>
-              <select v-model="providerForm.model" class="glass-input">
+              <select v-model="providerForm.model" class="glass-input glass-select">
                 <option v-for="model in providerModelOptions" :key="model" :value="model">{{ model }}</option>
               </select>
             </label>
@@ -386,7 +373,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
               <input v-model="providerForm.modelVersion" class="glass-input" placeholder="可选，例如 fast / pro / 32k" />
             </label>
             <label class="grid gap-2 text-sm md:col-span-2">
-              <span class="font-medium text-slate-700 dark:text-slate-200">API 地址</span>
+              <span class="flex items-center gap-2 font-medium text-slate-700 dark:text-slate-200">API 地址 <span class="rounded-full border border-sky-200 bg-sky-50/80 px-2 py-0.5 text-xs font-semibold text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">OpenAI API 格式</span></span>
               <input v-model="providerForm.baseUrl" class="glass-input" placeholder="https://api.example.com/v1" />
             </label>
             <label class="grid gap-2 text-sm md:col-span-2">
@@ -452,7 +439,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           <label v-for="field in selected.fields" :key="field.key" class="grid gap-3 px-5 py-4 sm:grid-cols-[220px_1fr] sm:items-center">
             <span class="text-sm font-medium text-slate-700 dark:text-slate-200">{{ field.label }}</span>
 
-            <select v-if="field.type === 'select'" class="glass-input" :value="fieldValue(field.key)" :disabled="field.readonly" @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)">
+            <select v-if="field.type === 'select'" class="glass-input glass-select" :value="fieldValue(field.key)" :disabled="field.readonly" @change="setFieldValue(field.key, ($event.target as HTMLSelectElement).value)">
               <option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
 

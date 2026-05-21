@@ -108,7 +108,7 @@ onUnmounted(() => {
     <div class="glass-panel mb-4 flex min-w-0 items-center gap-3 p-3">
       <span class="icon-[solar--filter-outline] size-5 shrink-0 text-sky-500" />
       <span class="shrink-0 text-sm font-medium text-slate-600 dark:text-slate-300">筛选</span>
-      <select v-model="statusFilter" class="glass-input min-w-0 flex-1">
+      <select v-model="statusFilter" class="glass-input glass-select min-w-0 flex-1">
         <option value="all">全部设备（{{ devices.devices.length }}）</option>
         <option v-for="state in stateOptions" :key="state" :value="state">{{ t(`states.${state}`) }}（{{ counts[state] ?? 0 }}）</option>
       </select>

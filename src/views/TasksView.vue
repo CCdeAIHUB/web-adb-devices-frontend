@@ -145,16 +145,16 @@ onMounted(load)
           </div>
 
           <div class="grid gap-3 md:grid-cols-2">
-            <input v-model="form.name" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="任务名称" />
-            <select v-model="form.framework" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950">
+            <input v-model="form.name" class="glass-input" placeholder="任务名称" />
+            <select v-model="form.framework" class="glass-input glass-select">
               <option value="appium-adb">Appium 2 + ADB</option>
               <option value="adb-shell">纯 ADB Shell</option>
               <option value="apk-companion">APK Companion 能力</option>
             </select>
-            <select v-model="form.triggerType" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950">
+            <select v-model="form.triggerType" class="glass-input glass-select">
               <option v-for="trigger in triggers" :key="trigger.value" :value="trigger.value">{{ trigger.label }}</option>
             </select>
-            <input v-model="form.triggerConfig" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" :placeholder="selectedTrigger.placeholder" />
+            <input v-model="form.triggerConfig" class="glass-input" :placeholder="selectedTrigger.placeholder" />
           </div>
 
           <div class="mt-4">
