@@ -126,14 +126,14 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-else class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div v-else class="grid justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,260px))]">
       <RouterLink
         v-for="device in filteredDevices"
         :key="device.deviceId"
-        class="glass-panel group overflow-hidden text-left transition-all duration-300 hover:-translate-y-0.5"
+        class="glass-panel group w-full overflow-hidden text-left transition-all duration-300 hover:-translate-y-0.5"
         :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }"
       >
-        <div class="relative mx-auto w-full max-w-[240px] overflow-hidden bg-slate-950/90" :style="{ aspectRatio: deviceAspectRatio(device) }">
+        <div class="relative w-full overflow-hidden bg-slate-950/90" :style="{ aspectRatio: deviceAspectRatio(device) }">
           <img v-if="canPreview(device)" :src="previewUrl(device)" class="h-full w-full object-contain opacity-95 transition-opacity duration-300" alt="设备当前界面" />
           <div v-else class="grid h-full place-items-center text-center text-slate-300">
             <div>

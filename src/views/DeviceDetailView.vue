@@ -84,6 +84,14 @@ const tabs = [
   ['power', '快速重启', 'icon-[solar--restart-outline]'],
 ] as const
 
+function tabDisabled(key: string) {
+  if (key === 'control' || key === 'terminal' || key === 'apps' || key === 'files' || key === 'hardware' || key === 'system' || key === 'power') {
+    return !canUseAdb.value
+  }
+
+  return false
+}
+
 const quickKeys = [
   ['返回', 4, 'icon-[solar--undo-left-round-outline]'],
   ['主页', 3, 'icon-[solar--home-2-outline]'],
@@ -462,8 +470,12 @@ onUnmounted(stopTimer)
         v-for="[key, label, icon] in tabs"
         :key="key"
         class="inline-flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm transition-all duration-300"
-        :class="activeTab === key ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'hover:bg-white dark:hover:bg-slate-900'"
-        @click="activeTab = key"
+        :class="[
+          activeTab === key ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'hover:bg-white dark:hover:bg-slate-900',
+          tabDisabled(key) ? 'cursor-not-allowed opacity-45' : ''
+        ]"
+        :disabled="tabDisabled(key)"
+        @click="!tabDisabled(key) && (activeTab = key)"
       >
         <span :class="[icon, 'size-5']" />
         <span>{{ label }}</span>
@@ -471,6 +483,13 @@ onUnmounted(stopTimer)
     </div>
 
     <div v-if="message" class="mb-4 rounded-md bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ message }}</div>
+
+    <div v-if="!canUseAdb && !canUseApk" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      该设备当前未连接 ADB，也没有 APK 在线通道。请先连接 ADB 或安装并启动 APK 后再操作。
+    </div>
+    <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">
+      APK 已在线，但当前页面大部分控制功能依赖 ADB，相关按钮已禁用。
+    </div>
 
     <div v-if="activeTab === 'control'" class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div class="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 dark:border-slate-800">

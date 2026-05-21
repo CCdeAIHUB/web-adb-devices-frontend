@@ -20,15 +20,13 @@ const devices = useDeviceStore()
 const tasks = ref<AutomationTask[]>([])
 const saving = ref(false)
 const message = ref('')
+const showHelp = ref(false)
 const form = reactive({
   id: '',
   name: '',
   framework: 'appium-adb',
   scriptLanguage: 'javascript',
-  script: `// Appium 2 + ADB 示例
-// 可通过脚本运行 Appium UI 自动化，并在需要时调用 adb / apk 操作。
-await adb.shell(deviceId, 'am start -n com.example/.MainActivity')
-await driver.pause(1000)`,
+  script: '',
   deviceIds: [] as string[],
   triggerType: 'manual',
   triggerConfig: '',
@@ -48,6 +46,15 @@ const triggers = [
 ]
 
 const selectedTrigger = computed(() => triggers.find((item) => item.value === form.triggerType) ?? triggers[0])
+const scriptPlaceholder = `// Appium 2 + ADB 示例
+// deviceId 由任务选择的设备注入
+await adb.shell(deviceId, 'am start -n com.example/.MainActivity')
+await driver.pause(1000)
+// 可以结合 driver 查找元素、点击、输入，也可以调用 adb shell / install / pull / push。`
+
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type } }))
+}
 
 async function load() {
   await Promise.all([devices.load(), loadTasks()])
@@ -93,10 +100,12 @@ async function saveTask() {
       body: JSON.stringify(form),
     })
     message.value = '任务已保存。'
+    notify('任务已保存。', 'success')
     resetForm()
     await loadTasks()
   } catch (error) {
     message.value = error instanceof ApiError ? error.message : '任务保存失败。'
+    notify(message.value, 'error')
   } finally {
     saving.value = false
   }
@@ -105,6 +114,7 @@ async function saveTask() {
 async function deleteTask(taskId: string) {
   await api(`/api/automation/tasks/${taskId}`, { method: 'DELETE' })
   await loadTasks()
+  notify('任务已删除。', 'success')
 }
 
 onMounted(load)
@@ -112,9 +122,15 @@ onMounted(load)
 
 <template>
   <section class="min-h-screen bg-slate-50 p-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:p-6">
-    <div class="mb-5">
-      <h1 class="text-xl font-semibold">任务</h1>
-      <p class="mt-1 text-sm text-slate-500">自动化脚本框架采用 Appium 2 + ADB，兼顾界面自动化、ADB 命令、APK 安装和跨设备执行。</p>
+    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold">任务</h1>
+        <p class="mt-1 text-sm text-slate-500">自动化脚本框架采用 Appium 2 + ADB，兼顾界面自动化、ADB 命令、APK 安装和跨设备执行。</p>
+      </div>
+      <button class="glass-button" @click="showHelp = true">
+        <span class="icon-[solar--question-circle-outline] size-5" />
+        <span>脚本教程</span>
+      </button>
     </div>
 
     <div class="grid gap-4 xl:grid-cols-[1fr_380px]">
@@ -157,7 +173,7 @@ onMounted(load)
             </div>
           </div>
 
-          <textarea v-model="form.script" class="mt-4 min-h-64 w-full resize-y rounded-lg border border-slate-300 bg-slate-950 p-4 font-mono text-sm text-slate-100 outline-none focus:border-sky-400" spellcheck="false" />
+          <textarea v-model="form.script" class="mt-4 min-h-64 w-full resize-y rounded-lg border border-slate-300 bg-slate-950 p-4 font-mono text-sm text-slate-100 outline-none focus:border-sky-400 placeholder:text-slate-500" :placeholder="scriptPlaceholder" spellcheck="false" />
 
           <div class="mt-4 flex flex-wrap items-center gap-3">
             <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60" :disabled="saving" @click="saveTask">
@@ -194,6 +210,25 @@ onMounted(load)
           <div v-if="tasks.length === 0" class="rounded-md bg-slate-100 p-4 text-sm text-slate-500 dark:bg-slate-800">还没有任务。</div>
         </div>
       </aside>
+    </div>
+
+    <div v-if="showHelp" class="fixed inset-0 z-40 grid place-items-center bg-slate-950/35 p-4 backdrop-blur-sm">
+      <div class="glass-panel max-h-[82vh] w-full max-w-3xl overflow-auto p-5">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="text-lg font-semibold">任务脚本教程</h2>
+          <button class="rounded-xl p-2 hover:bg-white/40 dark:hover:bg-white/10" @click="showHelp = false">
+            <span class="icon-[solar--close-circle-outline] size-5" />
+          </button>
+        </div>
+        <div class="space-y-4 text-sm leading-6 text-slate-700 dark:text-slate-200">
+          <p>推荐使用 Appium 2 + ADB。脚本语言为 JavaScript，运行时会为每台目标设备注入 <code>deviceId</code>、<code>adb</code> 和 <code>driver</code>。</p>
+          <pre class="overflow-auto rounded-2xl bg-slate-950 p-4 text-xs text-slate-100">await adb.shell(deviceId, 'am start -n com.example/.MainActivity')
+await driver.pause(1000)
+// 后续可读取界面、点击元素、输入文本或执行 adb 命令</pre>
+          <p>适合保存为任务的场景：定时巡检、循环执行、打开指定 App 后触发、屏幕出现关键文字、收到通知、电量或网络变化。普通 AI 对话不会自动变成任务，只有明确重复执行或条件触发时才建议保存。</p>
+          <p>注意事项：删除、卸载、重启、清除数据等高风险动作需要显式确认；多设备任务要避免写死分辨率；截图和识别建议使用低频率，防止前端和设备卡顿。</p>
+        </div>
+      </div>
     </div>
   </section>
 </template>

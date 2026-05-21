@@ -228,6 +228,10 @@ const runtimeRows = computed(() => [
 const settingsSnapshot = computed(() => JSON.stringify(Object.fromEntries(Object.entries(values).sort(([a], [b]) => a.localeCompare(b)))))
 const hasChanges = computed(() => initialSnapshot.value !== '' && settingsSnapshot.value !== initialSnapshot.value)
 
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type } }))
+}
+
 function fieldValue(key: string) {
   return values[key] ?? defaultValues[key] ?? ''
 }
@@ -286,8 +290,10 @@ async function addProvider() {
     providerForm.apiKey = ''
     await loadProviders()
     await loadSettings()
+    notify('AI 模型已添加并验证通过。', 'success')
   } catch (error) {
     providerMessage.value = error instanceof ApiError ? error.message : '模型添加失败，请检查配置。'
+    notify(providerMessage.value, 'error')
   } finally {
     providerSaving.value = false
   }
@@ -296,6 +302,7 @@ async function addProvider() {
 async function deleteProvider(providerId: string) {
   await api(`/api/agent/providers/${providerId}`, { method: 'DELETE' })
   await loadProviders()
+  notify('AI 模型已删除。', 'success')
 }
 
 async function saveSettings() {
@@ -312,6 +319,7 @@ async function saveSettings() {
     applyAppearance()
     initialSnapshot.value = settingsSnapshot.value
     savedAt.value = new Date().toLocaleTimeString()
+    notify('设置已保存。', 'success')
   } finally {
     saving.value = false
   }
