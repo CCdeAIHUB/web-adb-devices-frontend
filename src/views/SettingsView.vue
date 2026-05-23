@@ -100,7 +100,7 @@ const providerModelSelectOptions = computed(() => providerModelOptions.value.map
 const sections: SettingSection[] = [
   {
     key: 'general',
-    icon: 'icon-[solar--tuning-2-outline]',
+    icon: 'icon-[solar--tuning-2-bold-duotone]',
     fields: [
       { key: 'ui.language', label: '界面语言', type: 'select', options: [{ label: '简体中文', value: 'zh' }, { label: 'English', value: 'en' }] },
       { key: 'ui.theme', label: '主题', type: 'select', options: [{ label: '跟随系统', value: 'system' }, { label: '浅色', value: 'light' }, { label: '深色', value: 'dark' }] },
@@ -109,7 +109,7 @@ const sections: SettingSection[] = [
   },
   {
     key: 'network',
-    icon: 'icon-[solar--global-outline]',
+    icon: 'icon-[solar--global-bold-duotone]',
     fields: [
       { key: 'network.adminPort', label: '前端访问端口', type: 'number', readonly: true },
       { key: 'network.apkWsPort', label: 'APK 专用端口', type: 'number', readonly: true },
@@ -122,14 +122,15 @@ const sections: SettingSection[] = [
   },
   {
     key: 'security',
-    icon: 'icon-[solar--shield-keyhole-outline]',
+    icon: 'icon-[solar--shield-keyhole-bold-duotone]',
     fields: [
       { key: 'security.sessionDays', label: '登录保持天数', type: 'number', placeholder: '30' },
+      { key: 'security.adminPassword', label: '管理员密码', type: 'password' },
     ],
   },
   {
     key: 'devices',
-    icon: 'icon-[solar--devices-outline]',
+    icon: 'icon-[solar--devices-bold-duotone]',
     fields: [
       { key: 'devices.autoInstallApk', label: '授权后自动安装 APK', type: 'toggle' },
       { key: 'devices.autoLaunchApk', label: '安装后自动唤起 APK', type: 'toggle' },
@@ -139,7 +140,7 @@ const sections: SettingSection[] = [
   },
   {
     key: 'media',
-    icon: 'icon-[solar--video-frame-play-horizontal-outline]',
+    icon: 'icon-[solar--video-frame-play-horizontal-bold-duotone]',
     fields: [
       { key: 'media.defaultCodec', label: '默认编码', type: 'select', options: [{ label: 'H.264', value: 'h264' }, { label: 'H.265', value: 'h265' }] },
       { key: 'media.defaultBitrate', label: '默认码率 Kbps', type: 'number', placeholder: '6000' },
@@ -151,24 +152,25 @@ const sections: SettingSection[] = [
   },
   {
     key: 'automation',
-    icon: 'icon-[solar--programming-outline]',
+    icon: 'icon-[solar--programming-bold-duotone]',
     fields: [
       { key: 'automation.maxParallelTasks', label: '最大并发任务数', type: 'number', placeholder: '4' },
       { key: 'automation.skipOnError', label: '错误时跳过并记录', type: 'toggle' },
       { key: 'automation.persistOfflineTasks', label: '启用 APK 离线任务缓存', type: 'toggle' },
     ],
   },
-  { key: 'agent', icon: 'icon-[solar--magic-stick-3-outline]', fields: [] },
+  { key: 'agent', icon: 'icon-[solar--magic-stick-3-bold-duotone]', fields: [] },
   {
     key: 'advanced',
-    icon: 'icon-[solar--settings-minimalistic-outline]',
+    icon: 'icon-[solar--settings-minimalistic-bold-duotone]',
     fields: [
+      { key: 'advanced.dataDirectory', label: '数据目录', type: 'text', placeholder: '留空使用默认路径' },
       { key: 'advanced.logRetentionDays', label: '日志保留天数', type: 'number', placeholder: '30' },
       { key: 'advanced.debugLogging', label: '调试日志', type: 'toggle' },
       { key: 'advanced.exportConfig', label: '配置导入导出入口', type: 'text', readonly: true, placeholder: '后续版本启用' },
     ],
   },
-  { key: 'help', icon: 'icon-[solar--question-circle-outline]', fields: [] },
+  { key: 'help', icon: 'icon-[solar--question-circle-bold-duotone]', fields: [] },
 ]
 
 const defaultValues: Record<string, string> = Object.fromEntries(

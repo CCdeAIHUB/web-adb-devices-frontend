@@ -327,7 +327,7 @@ textarea {
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(-10px) scale(0.98);
+  transform: translateX(40px) scale(0.98);
 }
 
 .glass-input:focus {

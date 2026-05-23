@@ -3,6 +3,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { onMounted, onUnmounted, ref, computed } from 'vue'
 import logoUrl from '@/assets/logo.svg'
+import LiquidSelect from '@/components/LiquidSelect.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,26 +12,47 @@ const toasts = ref<Array<{ id: number; message: string; type: 'success' | 'error
 const aiPanelOpen = ref(false)
 const mobileMenuOpen = ref(false)
 
+// AI Panel state
+const aiMessages = ref<Array<{ role: 'user' | 'agent'; text: string }>>([])
+const aiPrompt = ref('')
+const aiRunning = ref(false)
+const aiProviders = ref<Array<{ id: string; displayName: string; model: string; enabled: boolean }>>([])
+const aiSelectedProvider = ref('')
+const aiLoaded = ref(false)
+
+interface AiProvider {
+  id: string
+  providerType: string
+  displayName: string
+  model: string
+  enabled: boolean
+}
+interface AgentRunResponse { runId: string; status: string; message: string }
+
 const isMobile = computed(() => {
   if (typeof window === 'undefined') return false
   return window.innerWidth < 1024
 })
 
+const usableAiProviders = computed(() => aiProviders.value.filter((p) => p.enabled && p.model))
+const aiProviderOptions = computed(() => usableAiProviders.value.map((p) => ({ label: `${p.displayName} / ${p.model}`, value: p.id })))
+
 // Desktop nav - no agent (agent moves to right panel), no logs/help (moved to settings)
+// icon format: [outline for inactive/hover, bold-filled for active/selected]
 const nav = [
-  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold-duotone]'],
-  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold-duotone]'],
-  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold-duotone]'],
-  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold-duotone]'],
+  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold]'],
+  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold]'],
+  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold]'],
+  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold]'],
 ] as const
 
 // Mobile bottom nav includes agent as separate page
 const mobileNav = [
-  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold-duotone]'],
-  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold-duotone]'],
-  ['agent', '/agent', 'icon-[solar--magic-stick-3-outline]', 'icon-[solar--magic-stick-3-bold-duotone]'],
-  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold-duotone]'],
-  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold-duotone]'],
+  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold]'],
+  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold]'],
+  ['agent', '/agent', 'icon-[solar--magic-stick-3-outline]', 'icon-[solar--magic-stick-3-bold]'],
+  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold]'],
+  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold]'],
 ] as const
 
 function pushToast(event: Event) {
@@ -48,11 +70,57 @@ function openToastTarget(target?: string) {
 
 function toggleAiPanel() {
   aiPanelOpen.value = !aiPanelOpen.value
+  if (aiPanelOpen.value && !aiLoaded.value) loadAiPanel()
+}
+
+async function loadAiPanel() {
+  try {
+    const { api } = await import('@/api/client')
+    aiProviders.value = await api<AiProvider[]>('/api/agent/providers')
+    aiSelectedProvider.value = usableAiProviders.value[0]?.id ?? ''
+    const raw = localStorage.getItem('wad_agent_conversations')
+    const convos = raw ? JSON.parse(raw) : []
+    if (convos.length > 0) {
+      aiMessages.value = convos[0].messages ?? []
+    } else {
+      aiMessages.value = [{ role: 'agent', text: '选择模型后直接描述目标。我会基于完整的 ADB/APK 能力帮你完成操作。' }]
+    }
+    aiLoaded.value = true
+  } catch { /* silent */ }
+}
+
+async function sendAiMessage() {
+  if (!aiPrompt.value.trim() || !aiSelectedProvider.value) return
+  const text = aiPrompt.value.trim()
+  aiMessages.value.push({ role: 'user', text })
+  aiPrompt.value = ''
+  aiRunning.value = true
+  try {
+    const { api: callApi } = await import('@/api/client')
+    const response = await callApi<AgentRunResponse>('/api/agent/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        prompt: text,
+        providerId: aiSelectedProvider.value,
+        deviceIds: [],
+        permissionMode: 'Default',
+        scopes: ['device:single'],
+        webSearchEnabled: false,
+        attachments: [],
+        history: aiMessages.value.slice(-12),
+      }),
+    })
+    aiMessages.value.push({ role: 'agent', text: response.message })
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : '请求失败'
+    aiMessages.value.push({ role: 'agent', text: msg })
+  } finally {
+    aiRunning.value = false
+  }
 }
 
 onMounted(() => {
   window.addEventListener('wad:notify', pushToast)
-  // Auto-open AI panel on agent route in desktop
   if (!isMobile.value && route.name === 'agent') {
     aiPanelOpen.value = true
   }
@@ -62,7 +130,7 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
 
 <template>
   <div class="min-h-screen text-slate-950 dark:text-slate-100">
-    <!-- Desktop Sidebar (fixed, content area uses margin-left to avoid overlap) -->
+    <!-- Desktop Sidebar -->
     <aside
       v-if="route.name !== 'login'"
       class="fixed inset-y-0 left-0 z-30 hidden w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85 lg:block"
@@ -72,6 +140,7 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
         <strong class="text-base font-semibold text-slate-800 dark:text-slate-100">Web ADB Devices</strong>
       </div>
       <nav class="space-y-1">
+        <!-- Nav items: hover shows semi-transparent outline, active shows bold-filled icon + sky highlight -->
         <RouterLink
           v-for="[key, href, icon, iconActive] in nav"
           :key="key"
@@ -79,7 +148,14 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
           class="nav-item group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200"
           :class="$route.name === key ? 'nav-active' : 'nav-inactive'"
         >
-          <span :class="[$route.name === key ? iconActive : icon, 'size-5 transition-all duration-200']" />
+          <!-- Icon: active = bold-filled, inactive(hover) = outline with opacity -->
+          <span
+            :class="[
+              $route.name === key ? iconActive : icon,
+              'size-5 transition-all duration-200',
+              $route.name !== key ? 'group-hover:opacity-50' : ''
+            ]"
+          />
           <span>{{ t(`nav.${key}`) }}</span>
         </RouterLink>
       </nav>
@@ -89,12 +165,12 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
         class="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
         @click="toggleAiPanel"
       >
-        <span :class="[aiPanelOpen ? 'icon-[solar--chat-round-close-bold-duotone]' : 'icon-[solar--chat-round-dots-bold-duotone]', 'size-5']" />
+        <span :class="[aiPanelOpen ? 'icon-[solar--chat-round-close-bold]' : 'icon-[solar--chat-round-dots-bold]', 'size-5']" />
         <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
       </button>
     </aside>
 
-    <!-- Main Content Area - offset left by sidebar width to prevent overlap -->
+    <!-- Main Content Area -->
     <main :class="[
       route.name === 'login' ? '' : 'pb-20 lg:pb-0',
       route.name !== 'login' ? 'lg:ml-[260px]' : '',
@@ -114,45 +190,63 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
       </div>
     </main>
 
-    <!-- Right Side AI Panel (Desktop) -->
+    <!-- Right Side AI Panel (Desktop) - Full functional chat interface -->
     <Transition name="panel-slide">
       <aside
         v-if="aiPanelOpen && route.name !== 'login' && !isMobile"
-        class="fixed right-0 top-0 z-30 hidden h-screen w-[370px] border-l border-slate-200/60 bg-white/85 p-4 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95"
+        class="fixed right-0 top-0 z-30 hidden h-screen w-[380px] flex flex-col border-l border-slate-200/60 bg-white/90 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95"
       >
-        <div class="flex h-full flex-col">
-          <div class="mb-4 flex items-center justify-between border-b border-slate-200/50 pb-3 dark:border-slate-700/30">
-            <div class="flex items-center gap-2">
-              <span class="icon-[solar--magic-stick-3-bold-duotone] size-5 text-sky-500" />
-              <h2 class="font-semibold text-sm text-slate-800 dark:text-slate-100">AI 助手</h2>
+        <!-- Panel Header -->
+        <div class="flex items-center justify-between border-b border-slate-200/50 px-4 py-3 dark:border-slate-700/30">
+          <div class="flex items-center gap-2">
+            <span class="icon-[solar--magic-stick-3-bold size-5 text-sky-500]" />
+            <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">AI 助手</span>
+          </div>
+          <button class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" @click="aiPanelOpen = false">
+            <span class="icon-[solar--close-circle-bold size-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200]" />
+          </button>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="flex-1 overflow-y-auto space-y-3 p-4">
+          <div v-if="!aiLoaded" class="flex items-center justify-center py-12">
+            <svg class="size-6 animate-spin text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+          </div>
+          <template v-else>
+            <div
+              v-for="(msg, idx) in aiMessages"
+              :key="idx"
+              class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm"
+              :class="msg.role === 'user'
+                ? 'ml-auto bg-sky-500 text-white'
+                : 'mr-auto border border-slate-200/60 bg-white/80 backdrop-blur-md text-slate-700 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-200'"
+            >{{ msg.text }}</div>
+            <div v-if="aiRunning" class="inline-flex items-center gap-2 rounded-2xl border border-slate-200/60 bg-white/80 px-3.5 py-2.5 text-xs shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
+              <span>AI 正在思考</span>
+              <span class="inline-flex gap-1"><span class="thinking-dot" /><span class="thinking-dot" /><span class="thinking-dot" /></span>
             </div>
-            <button class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800" @click="aiPanelOpen = false">
-              <span class="icon-[solar--close-circle-bold-duotone] size-5 text-slate-400" />
+          </template>
+        </div>
+
+        <!-- Input Area -->
+        <div class="border-t border-slate-200/50 p-3 dark:border-slate-700/30">
+          <textarea
+            v-model="aiPrompt"
+            placeholder="描述你的需求..."
+            rows="2"
+            class="w-full resize-none rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 transition-all focus:border-sky-400 focus:ring-1 focus:ring-sky-400/20 dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-200 dark:placeholder:text-slate-500"
+            @keydown.ctrl.enter.prevent="sendAiMessage"
+          />
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <LiquidSelect v-model="aiSelectedProvider" class="min-w-36" :options="aiProviderOptions" placeholder="选择模型" />
+            <button
+              class="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50 transition-colors"
+              :disabled="aiRunning || !aiSelectedProvider || !aiPrompt.trim()"
+              @click="sendAiMessage"
+            >
+              <span class="icon-[solar--plain-2-bold size-3.5]" />
+              {{ aiRunning ? '发送中' : '发送' }}
             </button>
-          </div>
-          <div class="flex-1 overflow-auto rounded-xl bg-slate-50/70 p-4 dark:bg-slate-800/30">
-            <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">选择模型后直接描述目标。我会基于完整的 ADB/APK 能力帮你完成操作。</p>
-            <div class="mt-4 space-y-2">
-              <div class="rounded-lg bg-sky-50/90 px-3 py-2.5 text-xs text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">设备控制、应用管理、文件操作</div>
-              <div class="rounded-lg bg-emerald-50/90 px-3 py-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">可多选设备批量操作</div>
-              <div class="rounded-lg bg-violet-50/90 px-3 py-2.5 text-xs text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">可开启联网搜索获取最新信息</div>
-            </div>
-          </div>
-          <div class="mt-4 rounded-xl border border-slate-200/60 bg-white/70 p-3 dark:border-slate-700/40 dark:bg-slate-800/50">
-            <textarea
-              placeholder="描述你的需求..."
-              class="w-full resize-none rounded-lg border-0 bg-transparent p-2 text-sm outline-none placeholder:text-slate-400 dark:text-slate-200"
-              rows="2"
-            />
-            <div class="mt-2 flex items-center justify-between">
-              <select class="rounded-lg border border-slate-200/70 bg-white/90 px-2 py-1.5 text-xs dark:border-slate-600/50 dark:bg-slate-700/70 dark:text-slate-200">
-                <option>选择模型</option>
-              </select>
-              <button class="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors">
-                <span class="icon-[solar--plain-2-bold size-3.5" />
-                发送
-              </button>
-            </div>
           </div>
         </div>
       </aside>
@@ -175,13 +269,19 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
       </RouterLink>
     </nav>
 
-    <!-- Toast Notifications -->
-    <TransitionGroup name="toast" tag="div" class="fixed right-4 top-4 z-50 grid w-[min(360px,calc(100vw-2rem))] gap-2">
+    <!-- Toast Notifications - slide from right, theme-aware colors -->
+    <TransitionGroup name="toast-slide-right" tag="div" class="fixed right-4 top-4 z-50 grid w-[min(360px,calc(100vw-2rem))] gap-2">
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="cursor-pointer rounded-xl border border-white/65 bg-white/88 px-4 py-3 text-sm shadow-xl backdrop-blur-xl"
-        :class="toast.type === 'error' ? 'border-rose-200 text-rose-700 dark:border-rose-900 dark:text-rose-200' : toast.type === 'success' ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900 dark:text-emerald-200' : 'text-slate-700 dark:text-slate-100'"
+        class="cursor-pointer rounded-xl px-4 py-3 text-sm shadow-xl backdrop-blur-md transition-colors"
+        :class="[
+          toast.type === 'error'
+            ? 'bg-rose-50/95 border border-rose-200/70 text-rose-700 dark:bg-rose-950/90 dark:border-rose-800/60 dark:text-rose-200'
+            : toast.type === 'success'
+              ? 'bg-emerald-50/95 border border-emerald-200/70 text-emerald-700 dark:bg-emerald-950/90 dark:border-emerald-800/60 dark:text-emerald-200'
+              : 'bg-slate-50/95 border border-slate-200/70 text-slate-700 dark:bg-slate-800/95 dark:border-slate-700/60 dark:text-slate-200'
+        ]"
         @click="openToastTarget(toast.target)"
       >
         {{ toast.message }}
@@ -216,14 +316,33 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
   color: #cbd5e1;
 }
 
-/* Panel Slide Animation */
+/* Panel Slide Animation (from right) */
 .panel-slide-enter-active,
 .panel-slide-leave-active {
-  transition: transform 300ms ease, opacity 300ms ease;
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 280ms ease;
 }
 .panel-slide-enter-from,
 .panel-slide-leave-to {
   transform: translateX(100%);
   opacity: 0;
+}
+
+/* Toast Slide-from-Right Animation */
+.toast-slide-right-enter-active {
+  transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast-slide-right-leave-active {
+  transition: all 220ms ease;
+}
+.toast-slide-right-enter-from {
+  opacity: 0;
+  transform: translateX(60px) scale(0.96);
+}
+.toast-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(40px) scale(0.98);
+}
+.toast-slide-right-move {
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 </style>
