@@ -235,7 +235,7 @@ async function saveScreenshot() {
     const fileName = `${device.value?.model || deviceId.value}-screenshot-${Date.now()}.png`
     const picker = (window as SaveFilePickerWindow).showSaveFilePicker
     if (picker) {
-      const handle = await picker({ suggestedName: fileName, types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] }] }})
+      const handle = await picker({ suggestedName: fileName, types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }] })
       const writable = await handle.createWritable()
       await writable.write(blob)
       await writable.close()
