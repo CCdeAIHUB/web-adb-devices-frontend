@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { inject, type Ref } from 'vue'
+import { inject, ref, type Ref } from 'vue'
 
-const aiPanelOpen = inject<Ref<boolean>>('aiPanelOpen', undefined)
-const toggleAiPanel = inject<() => void>('toggleAiPanel', undefined)
+const aiPanelOpen = inject<Ref<boolean> | undefined>('aiPanelOpen', undefined)
+const toggleAiPanel = inject<(() => void) | undefined>('toggleAiPanel', undefined)
 </script>
 
 <template>
