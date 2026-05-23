@@ -69,8 +69,9 @@ interface AdbInstallResult {
 }
 
 const isWirelessAdb = (serial: string) => serial.includes(':') || serial.includes('_adb-tls-connect')
-const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && !isWirelessAdb(device.serial)))
-const connectedWireless = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && isWirelessAdb(device.serial)))
+const alreadyAddedSerials = computed(() => new Set(devices.devices.map((d) => d.temporaryAdbSerial).filter(Boolean)))
+const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && !isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
+const connectedWireless = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const unauthorizedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'unauthorized' && !isWirelessAdb(device.serial)))
 const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'offline'))
 const hasAnyScan = computed(() => Boolean(devices.adbScan))
@@ -241,6 +242,8 @@ async function runPair() {
       ? formatCommandSuccess('配对命令已执行。', result.stdout, '请使用无线调试主页面显示的 IP 和连接端口继续连接。')
       : localizeAdbError(result)
     await scanAdb()
+    // Check if pairing resulted in a new device being added - auto close and notify
+    checkForNewDevice()
   } catch (error) {
     commandMessage.value = localizeApiError(error, '连接错误：无线配对请求发送失败。')
   } finally {
@@ -258,6 +261,8 @@ async function runConnect() {
     })
     commandMessage.value = result.success ? formatCommandSuccess('连接命令已执行。', result.stdout) : localizeAdbError(result)
     await scanAdb()
+    // Check if connection resulted in a new device - auto close and notify
+    checkForNewDevice()
   } catch (error) {
     commandMessage.value = localizeApiError(error, '连接错误：无线连接请求发送失败。')
   } finally {
@@ -265,12 +270,26 @@ async function runConnect() {
   }
 }
 
+let lastDeviceCountBeforeOperation = 0
+
+function checkForNewDevice() {
+  const currentDevices = devices.adbScan?.devices ?? []
+  const newAuthorized = currentDevices.filter((d) => d.state === 'device')
+  if (newAuthorized.length > lastDeviceCountBeforeOperation) {
+    const newDevice = newAuthorized[newAuthorized.length - 1]
+    notify(`已添加设备：${newDevice.model || newDevice.serial}`, 'success', `/devices/${encodeURIComponent(`adb:${newDevice.serial}`)}`)
+    closeConnect()
+  }
+}
+
+// Save device count before operations for comparison
 async function openConnect(mode: 'usb' | 'pair' | 'tcpip' = 'usb') {
   activeMode.value = mode
   showConnect.value = true
   await loadEnvironment()
   if (environment.value?.adb.exists) {
     await scanAdb()
+    lastDeviceCountBeforeOperation = (devices.adbScan?.devices ?? []).filter((d) => d.state === 'device').length
   }
   stopScanTimer()
   scanTimer = window.setInterval(() => {
@@ -460,8 +479,8 @@ onUnmounted(stopScanTimer)
         </div>
 
         <div class="border-b border-sky-200 bg-sky-50/80 px-5 py-3 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950/70 dark:text-sky-100">
-          内置 APK：
-          <span class="font-medium">{{ environment?.apk.exists ? '已随客户端打包，可直接安装到已授权设备。' : '当前发布包未找到内置 APK。' }}</span>
+          伴侣APK：
+          <span class="font-medium">伴侣APK会自动安装在连接ADB的设备上。</span>
         </div>
 
         <div class="grid min-h-0 flex-1 lg:grid-cols-[260px_1fr]">
@@ -544,7 +563,7 @@ onUnmounted(stopScanTimer)
                         :disabled="commandRunning || !environment?.apk.exists"
                         @click="installBundledApk(`adb:${device.serial}`)"
                       >
-                        安装内置 APK
+                        重新安装伴侣APK
                       </button>
                     </div>
 

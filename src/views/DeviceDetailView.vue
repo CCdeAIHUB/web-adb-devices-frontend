@@ -65,6 +65,7 @@ const screenPlaceholderText = computed(() => {
 // Fullscreen state for screen control
 const isFullscreen = ref(false)
 const screenContainerRef = ref<HTMLElement | null>(null)
+const transportMode = ref<'tcp' | 'udp'>('tcp')
 
 function toggleFullscreen() {
   const el = screenContainerRef.value
@@ -147,12 +148,13 @@ function tabDisabled(key: string) {
 }
 
 const quickKeys = [
-  ['返回', 4, 'icon-[solar--undo-left-round-bold-duotone]'],
-  ['主页', 3, 'icon-[solar--home-2-bold-duotone]'],
-  ['任务', 187, 'icon-[solar--widget-5-bold-duotone]'],
   ['电源', 26, 'icon-[solar--power-bold-duotone]'],
   ['音量+', 24, 'icon-[solar--volume-loud-bold-duotone]'],
   ['音量-', 25, 'icon-[solar--volume-small-bold-duotone]'],
+  ['截图', 'screenshot', 'icon-[solar--camera-bold-duotone]'],
+  ['返回', 4, 'icon-[solar--undo-left-round-bold-duotone]'],
+  ['主页', 3, 'icon-[solar--home-2-bold-duotone]'],
+  ['任务', 187, 'icon-[solar--widget-5-bold-duotone]'],
 ] as const
 
 const settingGroups = [
@@ -256,10 +258,15 @@ function onScreenLoaded(event: Event) {
   }
 }
 
+const isInitialLoad = ref(true)
+
 function onScreenError() {
   screenshotUrl.value = ''
   message.value = '截图加载失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
-  notify(message.value, 'error', '/help#adb-auth')
+  // Only notify on user-triggered refresh, not on initial page load
+  if (!isInitialLoad.value) {
+    notify(message.value, 'error', '/help#adb-auth')
+  }
 }
 
 function startStream() {
@@ -311,10 +318,18 @@ async function sendControl(action: string, body: object, successText: string) {
   finally { busy.value = false }
 }
 
-async function sendKey(keyCode: number) { await sendControl('keyevent', { keyCode }, '按键已发送。') }
+async function sendKey(keyCode: number | string) {
+  if (keyCode === 'screenshot') { saveScreenshot(); return }
+  await sendControl('keyevent', { keyCode: keyCode as number }, '按键已发送。')
+}
 
 async function sendText() {
   if (!inputText.value.trim()) { message.value = '请输入要发送到手机的文本。'; return }
+  if (canUseApk.value && !device.value?.permissions?.inputMethod) {
+    message.value = '请先在手机上开启并启用伴侣APK输入法，然后重试。'
+    notify(message.value, 'error')
+    return
+  }
   await sendControl('text', { text: inputText.value }, '文本已发送。')
 }
 
@@ -407,8 +422,34 @@ async function postSimple(path: string, body: object, successText: string) {
 onMounted(async () => {
   await devices.load()
   startPermissionPolling()
-  if (canUseAdb.value) refreshScreenshot()
+  if (canUseAdb.value) {
+    refreshScreenshot()
+    // Auto-detect and install APK if needed
+    await autoDetectAndInstallApk()
+    // Mark initial load complete after a short delay to allow screenshot to load
+    setTimeout(() => { isInitialLoad.value = false }, 2000)
+  } else {
+    isInitialLoad.value = false
+  }
 })
+
+async function autoDetectAndInstallApk() {
+  // If device already has APK online or no ADB, skip
+  if (device.value?.apkVersion || !canUseAdb.value) return
+  
+  try {
+    // Check if APK is installed on device via ADB
+    const result = await api<AdbCommandResult>(controlUrl('apps/check-apk'), { method: 'POST', body: JSON.stringify({}) })
+    if (result.success && result.stdout) {
+      // APK exists on device - version info in stdout, update will be handled by heartbeat
+      return
+    }
+    // APK not found - auto install silently
+    await installBundledApk()
+  } catch {
+    // Silently fail - user can manually install via banner
+  }
+}
 
 onUnmounted(() => { stopTimer(); stopPermissionTimer(); document.removeEventListener('fullscreenchange', handleFullscreenChange) })
 
@@ -474,7 +515,10 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
       </button>
     </div>
 
-    <div v-if="message" class="mb-4 rounded-md bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ message }}</div>
+    <!-- Control feedback message - fixed position to avoid layout shift -->
+    <Transition name="slide-down">
+      <div v-if="message" class="fixed top-16 left-1/2 z-40 -translate-x-1/2 rounded-xl px-5 py-2.5 text-sm shadow-lg backdrop-blur-md border border-slate-200/60 bg-white/95 dark:border-slate-700/50 dark:bg-slate-900/95 dark:text-slate-200">{{ message }}</div>
+    </Transition>
 
     <!-- Install progress banner -->
     <Transition name="slide-down">
@@ -503,8 +547,8 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
       <RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink>
     </div>
     <div v-else-if="canUseAdb && !device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-      <span>{{ bundledApkInstalled ? 'APK 已安装，下一步请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : 'APK 通道尚未在线：如果尚未安装，请安装内置 APK；如果已经安装，请在手机上授予所需权限。' }}</span>
-      <div class="flex flex-wrap gap-2"><button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">安装内置 APK</button><RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink></div>
+      <span>{{ bundledApkInstalled ? 'APK 已安装，下一步请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : 'APK 通道尚未在线：如果尚未安装，请安装伴侣APK；如果已经安装，请在手机上授予所需权限。' }}</span>
+      <div class="flex flex-wrap gap-2"><button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">重新安装伴侣APK</button><RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink></div>
     </div>
 
     <!-- Control Tab -->
@@ -514,13 +558,19 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <div class="flex items-center gap-2 text-sm">
             <span class="icon-[solar--smartphone-2-bold-duotone] size-5 text-sky-300" />
             <span>{{ streaming ? '实时观看中' : '手机控制' }}</span>
-            <span v-if="canUseApk" class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200">APK 在线</span>
-            <span v-else class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">ADB 控制</span>
+            <span v-if="canUseApk && device?.internalState === 'Online'" class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200">APK 控制</span>
+            <span v-else-if="canUseApk" class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">APK 待授权</span>
+            <span v-else class="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-200">ADB 控制</span>
           </div>
           <div class="flex items-center gap-3">
-            <label class="inline-flex cursor-pointer items-center gap-2 text-sm">
-              <input v-model="controlEnabled" class="size-4 accent-sky-500" type="checkbox" :disabled="!canUseAdb" />
-              <span>控制设备</span>
+            <!-- Transport mode selector -->
+            <div class="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
+              <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'tcp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'tcp'">TCP</button>
+              <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'udp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'udp'">UDP</button>
+            </div>
+            <label class="glass-toggle inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-sm backdrop-blur-sm transition-all hover:bg-white/10" :class="controlEnabled ? 'border-sky-400/60 bg-sky-500/15' : ''">
+              <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />
+              <span :class="controlEnabled ? 'text-sky-300' : 'text-slate-300'">控制设备</span>
             </label>
             <button class="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-sky-300 transition-colors" title="全屏" :disabled="!canUseAdb" @click="toggleFullscreen">
               <span class="icon-[solar--resize-bold size-4" />
@@ -534,20 +584,25 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
             :style="{ aspectRatio: `${screenSize.width} / ${screenSize.height}` }"
             @pointerdown="onPointerDown" @pointerup="onPointerUp"
           >
-            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="onScreenError" />
-            <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400">{{ screenPlaceholderText }}</div>
-            <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 border-2 border-sky-400/80" />
+            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill rounded-[2rem]" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="onScreenError" />
+            <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400 rounded-[2rem]">{{ screenPlaceholderText }}</div>
+            <!-- Control overlay with matching border radius -->
+            <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 rounded-[2rem] border-2 border-sky-400/80" />
           </div>
           <div class="ml-3 grid content-center gap-2">
-            <template v-for="[label, keyCode, icon] in quickKeys" :key="label">
+            <template v-for="[label, keyCode, icon] in quickKeys.slice(0, 4)" :key="label">
               <button class="icon-button group relative bg-white/10 text-white hover:bg-white/20 hover:scale-110 active:scale-95 transition-all duration-150" :disabled="busy || !canUseAdb" :title="label" @click="sendKey(keyCode)">
                 <span :class="[icon, 'size-5']" />
                 <span class="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap">{{ label }}</span>
               </button>
             </template>
-            <button class="icon-button group relative bg-white/10 text-white hover:bg-white/20 hover:scale-110 active:scale-95 transition-all duration-150" :disabled="busy || !canUseAdb" title="保存截图" @click="saveScreenshot">
-              <span class="icon-[solar--camera-bold-duotone] size-5" /><span class="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap">截图</span>
-            </button>
+            <div class="h-px bg-white/10 my-1" />
+            <template v-for="[label, keyCode, icon] in quickKeys.slice(4)" :key="label">
+              <button class="icon-button group relative bg-white/10 text-white hover:bg-white/20 hover:scale-110 active:scale-95 transition-all duration-150" :disabled="busy || !canUseAdb" :title="label" @click="sendKey(keyCode)">
+                <span :class="[icon, 'size-5']" />
+                <span class="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap">{{ label }}</span>
+              </button>
+            </template>
           </div>
         </div>
       </div>
@@ -596,7 +651,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <input v-model="packageFilter" class="h-10 min-w-64 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all focus:border-sky-400 dark:border-slate-700 dark:bg-slate-950" placeholder="搜索包名" />
           <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="loadPackages">列出软件包</button>
           <label class="inline-flex h-10 cursor-pointer items-center rounded-md border border-slate-300 px-4 text-sm transition-all hover:border-sky-300 dark:border-slate-700">安装 APK<input class="hidden" type="file" accept=".apk,application/vnd.android.package-archive" @change="installApk" /></label>
-          <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="installBundledApk">安装内置 APK</button>
+          <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="installBundledApk">重新安装伴侣APK</button>
         </div>
         <div class="max-h-[620px] overflow-auto">
           <button v-for="item in filteredPackages" :key="item.packageName" class="grid w-full gap-1 border-t border-slate-100 px-2 py-3 text-left text-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800" :class="selectedPackage === item.packageName ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : ''" @click="selectedPackage = item.packageName">

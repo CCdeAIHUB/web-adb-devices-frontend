@@ -29,21 +29,22 @@ interface AiProvider {
 }
 interface AgentRunResponse { runId: string; status: string; message: string }
 
-const isMobile = computed(() => {
-  if (typeof window === 'undefined') return false
-  return window.innerWidth < 1024
-})
+const isMobile = ref(false)
+
+function updateIsMobile() {
+  isMobile.value = typeof window !== 'undefined' ? window.innerWidth < 1024 : false
+}
 
 const usableAiProviders = computed(() => aiProviders.value.filter((p) => p.enabled && p.model))
 const aiProviderOptions = computed(() => usableAiProviders.value.map((p) => ({ label: `${p.displayName} / ${p.model}`, value: p.id })))
 
 // Desktop nav - no agent (agent moves to right panel), no logs/help (moved to settings)
-// icon format: [outline for inactive/hover, bold-filled for active/selected]
+// icon format: [outline for inactive, bold-duotone for hover, bold-filled for active/selected]
 const nav = [
-  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold]'],
-  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold]'],
-  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold]'],
-  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold]'],
+  ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold-duotone]', 'icon-[solar--home-2-bold]'],
+  ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold-duotone]', 'icon-[solar--devices-bold]'],
+  ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold-duotone]', 'icon-[solar--programming-bold]'],
+  ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold-duotone]', 'icon-[solar--settings-bold]'],
 ] as const
 
 // Mobile bottom nav includes agent as separate page
@@ -121,11 +122,16 @@ async function sendAiMessage() {
 
 onMounted(() => {
   window.addEventListener('wad:notify', pushToast)
+  window.addEventListener('resize', updateIsMobile)
+  updateIsMobile()
   if (!isMobile.value && route.name === 'agent') {
     aiPanelOpen.value = true
   }
 })
-onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
+onUnmounted(() => {
+  window.removeEventListener('wad:notify', pushToast)
+  window.removeEventListener('resize', updateIsMobile)
+})
 </script>
 
 <template>
@@ -140,21 +146,25 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
         <strong class="text-base font-semibold text-slate-800 dark:text-slate-100">Web ADB Devices</strong>
       </div>
       <nav class="space-y-1">
-        <!-- Nav items: hover shows semi-transparent outline, active shows bold-filled icon + sky highlight -->
+        <!-- Nav items: hover shows bold-duotone, active shows bold-filled icon + sky highlight -->
         <RouterLink
-          v-for="[key, href, icon, iconActive] in nav"
+          v-for="[key, href, icon, iconHover, iconActive] in nav"
           :key="key"
           :to="href"
           class="nav-item group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200"
           :class="$route.name === key ? 'nav-active' : 'nav-inactive'"
         >
-          <!-- Icon: active = bold-filled, inactive(hover) = outline with opacity -->
+          <!-- Icon: active = bold-filled, inactive(hover) = bold-duotone, default = outline -->
           <span
             :class="[
               $route.name === key ? iconActive : icon,
               'size-5 transition-all duration-200',
-              $route.name !== key ? 'group-hover:opacity-50' : ''
+              $route.name !== key ? 'group-hover:hidden' : ''
             ]"
+          />
+          <span
+            v-if="$route.name !== key"
+            :class="[iconHover, 'size-5 absolute transition-all duration-200 hidden group-hover:block']"
           />
           <span>{{ t(`nav.${key}`) }}</span>
         </RouterLink>
@@ -165,7 +175,7 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
         class="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
         @click="toggleAiPanel"
       >
-        <span :class="[aiPanelOpen ? 'icon-[solar--chat-round-close-bold]' : 'icon-[solar--chat-round-dots-bold]', 'size-5']" />
+        <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--chat-round-dots-bold]', 'size-5']" />
         <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
       </button>
     </aside>
