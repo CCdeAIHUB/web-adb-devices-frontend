@@ -681,38 +681,38 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 .dark .tab-btn-inactive:not(:disabled):hover { background-color: rgba(30,41,59,.55); color: #e2e8f0; }
 
 /* Quick key button in sidebar */
-.quick-key-btn { display: inline-flex; h: 2.75rem; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.5rem; border: 1px solid var(--tw-border-opacity, 226,232,240 / .8); background: white; font-size: 0.8125rem; color: #334155; transition: all 160ms ease; }
+.quick-key-btn { display: inline-flex; height: 2.75rem; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); background: white; font-size: 0.8125rem; color: #334155; transition: all 160ms ease; }
 .quick-key-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.7); background: #f0f9ff; color: #0369a1; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(14,165,233,.12); }
 .quick-key-btn:disabled { opacity: .45; }
 .dark .quick-key-btn { border-color: rgba(51,65,85,.5); background: #1e293b; color: #cbd5e1; }
 .dark .quick-key-btn:hover:not(:disabled) { border-color: rgba(56,189,248,.45); background: #0c1929; color: #38bdf8; }
 
 /* Setting entry buttons */
-.setting-entry-btn { display: inline-flex; h: 2.5rem; align-items: center; justify-start; gap: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); padding: 0 0.75rem; font-size: 0.875rem; color: #334155; transition: all 160ms ease; }
+.setting-entry-btn { display: inline-flex; height: 2.5rem; align-items: center; justify-content: flex-start; gap: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); padding: 0 0.75rem; font-size: 0.875rem; color: #334155; transition: all 160ms ease; }
 .setting-entry-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.65); color: #0369a1; background: #f0f9ff; }
 .setting-entry-btn:disabled { opacity: .5; }
 .dark .setting-entry-btn { border-color: rgba(51,65,85,.5); background: #1e293b; color: #cbd5e1; }
 .dark .setting-entry-btn:hover:not(:disabled) { border-color: rgba(56,189,248,.35); color: #38bdf8; background: #0f172a; }
 
 /* App action buttons */
-.app-action-btn { h: 2.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); font-size: 0.875rem; transition: all 160ms ease; }
+.app-action-btn { height: 2.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); font-size: 0.875rem; transition: all 160ms ease; }
 .app-action-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.65); color: #0369a1; background: #f0f9ff; }
 .app-action-btn:disabled { opacity: .5; }
 .dark .app-action-btn { border-color: rgba(51,65,85,.5); color: #cbd5e1; }
 .dark .app-action-btn:hover:not(:disabled) { border-color: rgba(56,189,248,.35); color: #38bdf8; background: #0f172a; }
-.app-action-btn-danger { composes: app-action-btn; color: #be123c; border-color: rgba(254,202,202,.7); }
+.app-action-btn-danger { height: 2.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); font-size: 0.875rem; transition: all 160ms ease; color: #be123c; border-color: rgba(254,202,202,.7); }
 .app-action-btn-danger:hover:not(:disabled) { border-color: rgba(251,113,133,.6); background: #fff1f2; }
 .dark .app-action-btn-danger { border-color: rgba(127,29,29,.45); color: #fda4af; }
 .dark .app-action-btn-danger:hover:not(:disabled) { border-color: rgba(225,29,72,.4); background: #450a0a; }
-.app-action-btn-warning { composes: app-action-btn; color: #b45309; border-color: rgba(254,243,199,.7); }
+.app-action-btn-warning { height: 2.5rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); font-size: 0.875rem; transition: all 160ms ease; color: #b45309; border-color: rgba(254,243,199,.7); }
 .app-action-btn-warning:hover:not(:disabled) { border-color: rgba(245,158,11,.5); background: #fefce8; }
 .dark .app-action-btn-warning { border-color: rgba(113,63,18,.45); color: #fcd34d; }
 .dark .app-action-btn-warning:hover:not(:disabled) { border-color: rgba(180,83,9,.4); background: #422006; }
 
 /* Hardware & Power buttons */
-.hw-refresh-btn { display: inline-flex; h: 2.5rem; align-items: center; gap: 0.5rem; border-radius: 0.5rem; background: #0ea5e9; padding: 0 1rem; font-size: 0.875rem; font-weight: 500; color: white; transition: all 160ms ease; }
+.hw-refresh-btn { display: inline-flex; height: 2.5rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; background: #0ea5e9; padding: 0 1rem; font-size: 0.875rem; font-weight: 500; color: white; transition: all 160ms ease; }
 .hw-refresh-btn:hover:not(:disabled) { background: #0284c7; box-shadow: 0 3px 10px rgba(14,165,233,.28); }
-.power-action-btn { display: inline-flex; h: 4rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.75rem; border: 1px solid rgba(226,232,240,.8); background: white; font-size: 0.875rem; font-weight: 500; transition: all 160ms ease; }
+.power-action-btn { display: inline-flex; height: 4rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.75rem; border: 1px solid rgba(226,232,240,.8); background: white; font-size: 0.875rem; font-weight: 500; transition: all 160ms ease; }
 .power-action-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.65); color: #0369a1; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.06); }
 .power-action-btn:disabled { opacity: .5; }
 .dark .power-action-btn { border-color: rgba(51,65,85,.5); background: #1e293b; color: #cbd5e1; }
