@@ -10,7 +10,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="liquid-shell min-h-screen p-4 text-slate-950 dark:text-slate-100 sm:p-6">
+  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
     <h1 class="mb-6 text-xl font-semibold">运行日志</h1>
     <div class="glass-panel overflow-auto">
       <div class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">

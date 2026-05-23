@@ -264,7 +264,7 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="liquid-shell grid min-h-screen grid-cols-1 gap-4 p-4 text-slate-950 dark:text-slate-100 sm:p-6 xl:grid-cols-[280px_1fr]">
+  <section class="grid min-h-[calc(100vh-8rem)] grid-cols-1 gap-4 xl:grid-cols-[280px_1fr]">
     <aside class="glass-panel flex min-h-[220px] flex-col p-3">
       <div class="mb-3 flex items-center justify-between">
         <h1 class="font-semibold">AI Agent</h1>

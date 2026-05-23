@@ -137,7 +137,7 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="min-h-screen bg-slate-50 p-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:p-6">
+  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
     <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">任务</h1>

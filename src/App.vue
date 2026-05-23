@@ -16,14 +16,12 @@ const isMobile = computed(() => {
   return window.innerWidth < 1024
 })
 
-// Desktop nav - no agent (agent moves to right panel)
+// Desktop nav - no agent (agent moves to right panel), no logs/help (moved to settings)
 const nav = [
   ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold-duotone]'],
   ['devices', '/devices', 'icon-[solar--devices-outline]', 'icon-[solar--devices-bold-duotone]'],
   ['tasks', '/tasks', 'icon-[solar--programming-outline]', 'icon-[solar--programming-bold-duotone]'],
   ['settings', '/settings', 'icon-[solar--settings-outline]', 'icon-[solar--settings-bold-duotone]'],
-  ['logs', '/logs', 'icon-[solar--document-text-outline]', 'icon-[solar--document-text-bold-duotone]'],
-  ['help', '/help', 'icon-[solar--question-circle-outline]', 'icon-[solar--question-circle-bold-duotone]'],
 ] as const
 
 // Mobile bottom nav includes agent as separate page
@@ -64,21 +62,21 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
 
 <template>
   <div class="min-h-screen text-slate-950 dark:text-slate-100">
-    <!-- Desktop Sidebar -->
+    <!-- Desktop Sidebar (fixed, content area uses margin-left to avoid overlap) -->
     <aside
       v-if="route.name !== 'login'"
-      class="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-sky-200/50 bg-gradient-to-b from-white/80 to-sky-50/60 p-4 shadow-lg backdrop-blur-xl dark:border-sky-900/30 dark:from-slate-900/90 dark:to-slate-950/80 lg:block"
+      class="fixed inset-y-0 left-0 z-30 hidden w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85 lg:block"
     >
       <div class="mb-8 flex items-center gap-3">
-        <img :src="logoUrl" alt="Web ADB Devices" class="size-10 rounded-2xl shadow-lg shadow-sky-500/25" />
-        <strong class="bg-gradient-to-r from-sky-600 to-sky-400 bg-clip-text text-lg text-transparent">Web ADB Devices</strong>
+        <img :src="logoUrl" alt="Web ADB Devices" class="size-9 rounded-xl shadow-md shadow-sky-500/20" />
+        <strong class="text-base font-semibold text-slate-800 dark:text-slate-100">Web ADB Devices</strong>
       </div>
       <nav class="space-y-1">
         <RouterLink
           v-for="[key, href, icon, iconActive] in nav"
           :key="key"
           :to="href"
-          class="nav-item group flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-all duration-200"
+          class="nav-item group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200"
           :class="$route.name === key ? 'nav-active' : 'nav-inactive'"
         >
           <span :class="[$route.name === key ? iconActive : icon, 'size-5 transition-all duration-200']" />
@@ -88,66 +86,69 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
 
       <!-- AI Panel Toggle Button -->
       <button
-        class="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-sky-300/50 bg-sky-50/80 px-3 text-sm font-semibold text-sky-700 transition-all duration-200 hover:bg-sky-100 hover:shadow-md hover:shadow-sky-500/10 dark:border-sky-700/50 dark:bg-sky-950/50 dark:text-sky-300 dark:hover:bg-sky-900/50"
+        class="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
         @click="toggleAiPanel"
       >
         <span :class="[aiPanelOpen ? 'icon-[solar--chat-round-close-bold-duotone]' : 'icon-[solar--chat-round-dots-bold-duotone]', 'size-5']" />
-        <span>{{ aiPanelOpen ? '关闭AI助手' : 'AI助手' }}</span>
+        <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
       </button>
     </aside>
 
-    <!-- Main Content Area -->
+    <!-- Main Content Area - offset left by sidebar width to prevent overlap -->
     <main :class="[
       route.name === 'login' ? '' : 'pb-20 lg:pb-0',
+      route.name !== 'login' ? 'lg:ml-[260px]' : '',
       aiPanelOpen && route.name !== 'login' && !isMobile ? 'lg:pr-[380px]' : ''
     ]">
       <!-- Mobile Header with menu toggle -->
-      <header v-if="route.name !== 'login'" class="sticky top-0 z-20 flex items-center justify-between border-b border-sky-200/50 bg-white/70 px-4 py-3 backdrop-blur-xl dark:border-sky-900/30 dark:bg-slate-900/70 lg:hidden">
-        <button class="flex items-center gap-2 rounded-xl p-2 hover:bg-sky-50 dark:hover:bg-slate-800" @click="mobileMenuOpen = !mobileMenuOpen">
-          <span class="icon-[solar--hamburger-menu-linear size-6 text-sky-600]" />
+      <header v-if="route.name !== 'login'" class="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 py-3 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
+        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="mobileMenuOpen = !mobileMenuOpen">
+          <span class="icon-[solar--hamburger-menu-linear size-6 text-slate-600 dark:text-slate-300]" />
         </button>
         <span class="font-semibold text-slate-800 dark:text-slate-100">{{ $t(`nav.${String(route.name) || 'dashboard'}`) }}</span>
         <div class="w-10" />
       </header>
 
-      <RouterView />
+      <div :class="route.name !== 'login' ? 'p-4 sm:p-6 lg:p-8' : ''">
+        <RouterView />
+      </div>
     </main>
 
     <!-- Right Side AI Panel (Desktop) -->
     <Transition name="panel-slide">
       <aside
         v-if="aiPanelOpen && route.name !== 'login' && !isMobile"
-        class="fixed right-0 top-0 z-30 hidden h-screen w-[370px] border-l border-sky-200/50 bg-gradient-to-br from-white/85 to-sky-50/40 p-4 backdrop-blur-xl shadow-xl dark:border-sky-900/30 dark:from-slate-900/95 dark:to-slate-950/80 lg:block"
+        class="fixed right-0 top-0 z-30 hidden h-screen w-[370px] border-l border-slate-200/60 bg-white/85 p-4 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95"
       >
         <div class="flex h-full flex-col">
-          <div class="mb-4 flex items-center justify-between border-b border-sky-200/40 pb-3 dark:border-sky-900/30">
+          <div class="mb-4 flex items-center justify-between border-b border-slate-200/50 pb-3 dark:border-slate-700/30">
             <div class="flex items-center gap-2">
-              <span class="icon-[solar--magic-stick-3-bold-duotone] size-6 text-sky-500" />
-              <h2 class="font-semibold text-slate-800 dark:text-slate-100">AI 助手</h2>
+              <span class="icon-[solar--magic-stick-3-bold-duotone] size-5 text-sky-500" />
+              <h2 class="font-semibold text-sm text-slate-800 dark:text-slate-100">AI 助手</h2>
             </div>
-            <button class="rounded-lg p-1.5 hover:bg-sky-100 dark:hover:bg-slate-800" @click="aiPanelOpen = false">
-              <span class="icon-[solar--close-circle-bold-duotone] size-5 text-slate-500" />
+            <button class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800" @click="aiPanelOpen = false">
+              <span class="icon-[solar--close-circle-bold-duotone] size-5 text-slate-400" />
             </button>
           </div>
-          <div class="flex-1 overflow-auto rounded-xl bg-white/50 p-4 dark:bg-slate-800/30">
-            <p class="text-sm text-slate-500 dark:text-slate-400">选择模型后直接描述目标。我会基于完整的 ADB/APK 能力帮你完成操作。</p>
+          <div class="flex-1 overflow-auto rounded-xl bg-slate-50/70 p-4 dark:bg-slate-800/30">
+            <p class="text-sm leading-relaxed text-slate-500 dark:text-slate-400">选择模型后直接描述目标。我会基于完整的 ADB/APK 能力帮你完成操作。</p>
             <div class="mt-4 space-y-2">
-              <div class="rounded-lg bg-sky-50/80 px-3 py-2 text-xs text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">💬 支持设备控制、应用管理、文件操作等</div>
-              <div class="rounded-lg bg-emerald-50/80 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">📱 可多选设备批量操作</div>
-              <div class="rounded-lg bg-violet-50/80 px-3 py-2 text-xs text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">🔍 可开启联网搜索获取最新信息</div>
+              <div class="rounded-lg bg-sky-50/90 px-3 py-2.5 text-xs text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">设备控制、应用管理、文件操作</div>
+              <div class="rounded-lg bg-emerald-50/90 px-3 py-2.5 text-xs text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">可多选设备批量操作</div>
+              <div class="rounded-lg bg-violet-50/90 px-3 py-2.5 text-xs text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">可开启联网搜索获取最新信息</div>
             </div>
           </div>
-          <div class="mt-4 rounded-xl border border-sky-200/50 bg-white/60 p-3 dark:border-sky-900/30 dark:bg-slate-800/40">
+          <div class="mt-4 rounded-xl border border-slate-200/60 bg-white/70 p-3 dark:border-slate-700/40 dark:bg-slate-800/50">
             <textarea
               placeholder="描述你的需求..."
-              class="w-full resize-none rounded-lg border-0 bg-transparent p-2 text-sm outline-none placeholder:text-slate-400"
+              class="w-full resize-none rounded-lg border-0 bg-transparent p-2 text-sm outline-none placeholder:text-slate-400 dark:text-slate-200"
               rows="2"
             />
             <div class="mt-2 flex items-center justify-between">
-              <select class="rounded-lg border border-sky-200/60 bg-white/80 px-2 py-1.5 text-xs dark:border-sky-800/40 dark:bg-slate-900/60">
+              <select class="rounded-lg border border-slate-200/70 bg-white/90 px-2 py-1.5 text-xs dark:border-slate-600/50 dark:bg-slate-700/70 dark:text-slate-200">
                 <option>选择模型</option>
               </select>
-              <button class="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600">
+              <button class="inline-flex items-center gap-1.5 rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 transition-colors">
                 <span class="icon-[solar--plain-2-bold size-3.5" />
                 发送
               </button>
@@ -160,14 +161,14 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
     <!-- Mobile Bottom Navigation -->
     <nav
       v-if="route.name !== 'login'"
-      class="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[28px] border border-sky-200/55 bg-white/75 p-2 shadow-lg shadow-sky-500/10 backdrop-blur-xl dark:border-sky-900/35 dark:bg-slate-950/75 lg:hidden"
+      class="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-slate-200/55 bg-white/80 p-2 shadow-lg backdrop-blur-xl dark:border-slate-700/35 dark:bg-slate-950/80 lg:hidden"
     >
       <RouterLink
         v-for="[key, href, icon, iconActive] in mobileNav"
         :key="key"
         :to="href"
-        class="grid h-14 place-items-center rounded-2xl text-xs transition-all duration-200"
-        :class="$route.name === key ? 'bg-sky-500 text-white shadow-md' : 'text-slate-500 hover:bg-sky-50 dark:text-slate-400 dark:hover:bg-slate-800'"
+        class="grid h-14 place-items-center rounded-xl text-xs transition-all duration-200"
+        :class="$route.name === key ? 'bg-sky-500 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'"
       >
         <span :class="[$route.name === key ? iconActive : icon, 'size-6']" />
         <span class="mt-0.5 text-[11px]">{{ t(`nav.${key}`) }}</span>
@@ -179,7 +180,7 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="cursor-pointer rounded-xl border border-white/60 bg-white/85 px-4 py-3 text-sm shadow-xl backdrop-blur-xl"
+        class="cursor-pointer rounded-xl border border-white/65 bg-white/88 px-4 py-3 text-sm shadow-xl backdrop-blur-xl"
         :class="toast.type === 'error' ? 'border-rose-200 text-rose-700 dark:border-rose-900 dark:text-rose-200' : toast.type === 'success' ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900 dark:text-emerald-200' : 'text-slate-700 dark:text-slate-100'"
         @click="openToastTarget(toast.target)"
       >
@@ -192,29 +193,27 @@ onUnmounted(() => window.removeEventListener('wad:notify', pushToast))
 <style scoped>
 /* Nav Item Styles */
 .nav-active {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(56, 189, 248, 0.08));
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.10), rgba(56, 189, 248, 0.05));
   color: #0369a1;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 .dark .nav-active {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.2), rgba(56, 189, 248, 0.1));
-  color: #7dd3fc;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(56, 189, 248, 0.08));
+  color: #38bdf8;
 }
 
 .nav-inactive {
   color: #64748b;
 }
 .nav-inactive:hover {
-  background-color: rgba(224, 242, 254, 0.5);
-  color: #0284c7;
+  background-color: rgba(241, 245, 249, 0.7);
+  color: #334155;
 }
 .dark .nav-inactive {
   color: #94a3b8;
 }
 .dark .nav-inactive:hover {
-  background-color: rgba(15, 23, 42, 0.4);
-  color: #38bdf8;
+  background-color: rgba(30, 41, 59, 0.5);
+  color: #cbd5e1;
 }
 
 /* Panel Slide Animation */

@@ -581,7 +581,7 @@ function stopPermissionTimer() {
 </script>
 
 <template>
-  <section class="min-h-screen bg-slate-50 p-4 text-slate-950 dark:bg-slate-950 dark:text-slate-100 sm:p-6">
+  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div>
         <RouterLink class="mb-2 inline-flex items-center gap-2 text-sm text-sky-700 hover:underline dark:text-sky-300" to="/devices">

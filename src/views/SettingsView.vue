@@ -168,7 +168,7 @@ const sections: SettingSection[] = [
       { key: 'advanced.exportConfig', label: '配置导入导出入口', type: 'text', readonly: true, placeholder: '后续版本启用' },
     ],
   },
-  { key: 'logs', icon: 'icon-[solar--document-text-outline]', fields: [] },
+  { key: 'help', icon: 'icon-[solar--question-circle-outline]', fields: [] },
 ]
 
 const defaultValues: Record<string, string> = Object.fromEntries(
@@ -347,7 +347,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
 <template>
-  <section class="min-h-screen liquid-shell p-4 text-slate-950 dark:text-slate-100 sm:p-6">
+  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">设置</h1>
       <button class="glass-button" :class="hasChanges ? 'glass-button-primary ring-2 ring-sky-200' : ''" :disabled="saving || !hasChanges" @click="saveSettings">
@@ -378,24 +378,25 @@ watch(() => providerForm.providerType, useProviderTemplate)
           </div>
         </div>
 
-        <div v-if="selected.key === 'logs'" class="grid gap-3 p-5">
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="font-semibold">运行日志</h3>
-            <button class="glass-button h-9 px-3" @click="loadLogs">
-              <span class="icon-[solar--refresh-bold-duotone] size-5" />
-              <span>刷新</span>
-            </button>
+        <div v-if="selected.key === 'help'" class="grid gap-5 p-5">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <RouterLink to="/logs" class="glass-panel flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+              <span class="icon-[solar--document-text-bold-duotone] size-10 text-sky-500" />
+              <div>
+                <h3 class="font-semibold">运行日志</h3>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">查看系统运行日志，排查问题</p>
+              </div>
+            </RouterLink>
+            <RouterLink to="/help" class="glass-panel flex items-center gap-4 p-4 transition-all hover:-translate-y-0.5 hover:shadow-md">
+              <span class="icon-[solar--question-circle-bold-duotone] size-10 text-sky-500" />
+              <div>
+                <h3 class="font-semibold">连接帮助</h3>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">设备连接、APK安装、权限配置指南</p>
+              </div>
+            </RouterLink>
           </div>
-          <div class="overflow-auto rounded-2xl border border-white/45 bg-white/35 dark:border-white/10 dark:bg-white/5">
-            <div class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/35 px-4 py-3 text-xs font-semibold text-slate-500 dark:border-white/10">
-              <span>时间</span><span>级别</span><span>模块</span><span>消息</span>
-            </div>
-            <div v-for="log in logs" :key="log.id" class="grid min-w-[720px] grid-cols-[190px_80px_100px_minmax(0,1fr)] gap-3 border-b border-white/25 px-4 py-3 text-sm last:border-b-0 dark:border-white/10">
-              <span class="whitespace-nowrap text-xs leading-5 text-slate-500">{{ new Date(log.createdAt).toLocaleString() }}</span>
-              <span class="font-medium">{{ log.level }}</span>
-              <span>{{ log.module }}</span>
-              <span class="min-w-0 break-words">{{ log.message }}</span>
-            </div>
+          <div class="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-600 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-400">
+            日志和帮助已从导航栏移至设置页。如需快速访问可收藏对应页面。
           </div>
         </div>
 
