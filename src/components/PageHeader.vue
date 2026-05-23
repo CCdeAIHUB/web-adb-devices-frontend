@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { inject, ref, type Ref } from 'vue'
+import { inject, ref } from 'vue'
 
-const aiPanelOpen = inject<Ref<boolean> | undefined>('aiPanelOpen', undefined)
-const toggleAiPanel = inject<(() => void) | undefined>('toggleAiPanel', undefined)
+// inject auto-unwraps Ref in Vue 3.5+, so the type is boolean, not Ref<boolean>
+const aiPanelOpen = inject<boolean>('aiPanelOpen', false)
+const toggleAiPanel = inject<() => void>('toggleAiPanel', () => {})
 </script>
 
 <template>
@@ -14,12 +15,11 @@ const toggleAiPanel = inject<(() => void) | undefined>('toggleAiPanel', undefine
       <slot name="actions" />
       <!-- AI toggle button (desktop only, provided by App.vue) -->
       <button
-        v-if="toggleAiPanel"
         class="hidden lg:inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
         @click="toggleAiPanel"
       >
-        <span :class="[aiPanelOpen?.value ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-4.5']" />
-        <span>{{ aiPanelOpen?.value ? '关闭AI' : 'AI 助手' }}</span>
+        <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-4.5']" />
+        <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
       </button>
     </div>
   </div>
