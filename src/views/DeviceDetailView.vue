@@ -50,7 +50,7 @@ const permissionRows = computed(() => [
   { key: 'inputMethod', label: '输入法', enabled: Boolean(device.value?.permissions?.inputMethod) },
   { key: 'notifications', label: '通知权限', enabled: Boolean(device.value?.permissions?.notifications) },
   { key: 'batteryUnrestricted', label: '后台运行', enabled: Boolean(device.value?.permissions?.batteryUnrestricted) },
-:])
+])
 const missingPermissionNames = computed(() => permissionRows.value.filter((item) => !item.enabled).map((item) => item.label))
 
 // Dynamic placeholder text for screen area
@@ -137,7 +137,7 @@ const tabs = [
   ['hardware', '硬件信息', 'icon-[solar--cpu-outline]'],
   ['system', '系统界面', 'icon-[solar--tuning-2-outline]'],
   ['power', '快速重启', 'icon-[solar--restart-outline]'],
-:] as const
+] as const
 
 function tabDisabled(key: string) {
   if (key === 'control' || key === 'terminal' || key === 'apps' || key === 'files' || key === 'hardware' || key === 'system' || key === 'power') {
@@ -184,7 +184,7 @@ const settingGroups = [
       ['安全', 'security', 'icon-[solar--shield-check-bold-duotone]'],
     ],
   },
-:] as const
+] as const
 
 const statusIconOptions = [
   ['time', '时间'], ['location', '定位'], ['headset', '耳机'], ['cast', '投射'],
@@ -200,7 +200,7 @@ const powerActions = [
   ['shutdown', '关机', 'icon-[solar--power-bold-duotone]'],
   ['fastbootd', 'fastbootd', 'icon-[solar--smartphone-update-bold-duotone]'],
   ['recovery', 'Recovery', 'icon-[solar--shield-warning-bold-duotone]'],
-:] as const
+] as const
 
 function controlUrl(path: string) {
   return `/api/devices/${encodeURIComponent(deviceId.value)}/${path}`
