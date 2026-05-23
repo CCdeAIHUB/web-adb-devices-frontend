@@ -16,7 +16,7 @@ export const router = createRouter({
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     { path: '/', name: 'dashboard', component: DashboardView },
     { path: '/devices', name: 'devices', component: DevicesView },
-    { path: '/devices/:deviceId', name: 'device-detail', component: DeviceDetailView },
+    { path: '/devices/:deviceId(.*)', name: 'device-detail', component: DeviceDetailView },
     { path: '/agent', name: 'agent', component: AgentView },
     { path: '/tasks', name: 'tasks', component: TasksView },
     { path: '/settings', name: 'settings', component: SettingsView },

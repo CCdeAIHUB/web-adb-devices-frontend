@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
 import LiquidSelect from '@/components/LiquidSelect.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 interface AutomationTask {
   id: string
@@ -137,17 +138,20 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">任务</h1>
-        <p class="mt-1 text-sm text-slate-500">自动化脚本框架采用 Appium 2 + ADB，兼顾界面自动化、ADB 命令、APK 安装和跨设备执行。</p>
-      </div>
-      <button class="glass-button" @click="showHelp = true">
-        <span class="icon-[solar--question-circle-outline] size-5" />
-        <span>脚本教程</span>
-      </button>
-    </div>
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+    <PageHeader>
+      <h1 class="text-xl font-semibold">任务</h1>
+      <p class="mt-1 text-sm text-slate-500">自动化脚本框架采用 Appium 2 + ADB，兼顾界面自动化、ADB 命令、APK 安装和跨设备执行。</p>
+      <template #actions>
+        <button class="glass-button" @click="showHelp = true">
+          <span class="icon-[solar--question-circle-outline] size-5" />
+          <span>脚本教程</span>
+        </button>
+      </template>
+    </PageHeader>
+
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto">
 
     <div class="grid gap-4 xl:grid-cols-[1fr_380px]">
       <div class="grid gap-4">
@@ -237,5 +241,6 @@ await driver.pause(1000)
         </div>
       </div>
     </div>
+    </div><!-- end scrollable content -->
   </section>
 </template>

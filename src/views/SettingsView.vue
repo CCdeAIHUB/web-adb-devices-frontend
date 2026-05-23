@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ApiError, api } from '@/api/client'
 import LiquidSelect from '@/components/LiquidSelect.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -349,14 +350,19 @@ watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
 <template>
-  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+    <PageHeader>
       <h1 class="text-xl font-semibold">设置</h1>
-      <button class="glass-button" :class="hasChanges ? 'glass-button-primary ring-2 ring-sky-200' : ''" :disabled="saving || !hasChanges" @click="saveSettings">
-        <span class="icon-[solar--diskette-bold-duotone] size-5" />
-        <span>{{ saving ? '保存中' : hasChanges ? '保存更改' : '已保存' }}</span>
-      </button>
-    </div>
+      <template #actions>
+        <button class="glass-button" :class="hasChanges ? 'glass-button-primary ring-2 ring-sky-200' : ''" :disabled="saving || !hasChanges" @click="saveSettings">
+          <span class="icon-[solar--diskette-bold-duotone] size-5" />
+          <span>{{ saving ? '保存中' : hasChanges ? '保存更改' : '已保存' }}</span>
+        </button>
+      </template>
+    </PageHeader>
+
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto">
 
     <div class="grid items-start gap-4 lg:grid-cols-[240px_1fr]">
       <nav class="glass-panel grid gap-2 p-2 lg:block lg:min-h-[552px] lg:space-y-1">
@@ -500,5 +506,6 @@ watch(() => providerForm.providerType, useProviderTemplate)
     </div>
 
     <p v-if="savedAt" class="mt-3 text-sm text-slate-500">已保存 {{ savedAt }}</p>
+    </div><!-- end scrollable content -->
   </section>
 </template>

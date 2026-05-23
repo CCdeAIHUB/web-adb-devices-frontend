@@ -1,33 +1,20 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, provide, defineAsyncComponent } from 'vue'
 import logoUrl from '@/assets/logo.svg'
-import LiquidSelect from '@/components/LiquidSelect.vue'
+
+const AgentPanel = defineAsyncComponent(() => import('@/views/AgentView.vue'))
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const toasts = ref<Array<{ id: number; message: string; type: 'success' | 'error' | 'info'; target?: string }>>([])
 const aiPanelOpen = ref(false)
-const mobileMenuOpen = ref(false)
 
-// AI Panel state
-const aiMessages = ref<Array<{ role: 'user' | 'agent'; text: string }>>([])
-const aiPrompt = ref('')
-const aiRunning = ref(false)
-const aiProviders = ref<Array<{ id: string; displayName: string; model: string; enabled: boolean }>>([])
-const aiSelectedProvider = ref('')
-const aiLoaded = ref(false)
-
-interface AiProvider {
-  id: string
-  providerType: string
-  displayName: string
-  model: string
-  enabled: boolean
-}
-interface AgentRunResponse { runId: string; status: string; message: string }
+// Provide aiPanelOpen to child views so they can add the toggle button
+provide('aiPanelOpen', aiPanelOpen)
+provide('toggleAiPanel', () => { aiPanelOpen.value = !aiPanelOpen.value })
 
 const isMobile = ref(false)
 
@@ -35,10 +22,7 @@ function updateIsMobile() {
   isMobile.value = typeof window !== 'undefined' ? window.innerWidth < 1024 : false
 }
 
-const usableAiProviders = computed(() => aiProviders.value.filter((p) => p.enabled && p.model))
-const aiProviderOptions = computed(() => usableAiProviders.value.map((p) => ({ label: `${p.displayName} / ${p.model}`, value: p.id })))
-
-// Desktop nav - no agent (agent moves to right panel), no logs/help (moved to settings)
+// Desktop nav - no agent (agent is right panel toggle), no logs/help (moved to settings)
 // icon format: [outline for inactive, bold-duotone for hover, bold-filled for active/selected]
 const nav = [
   ['dashboard', '/', 'icon-[solar--home-2-outline]', 'icon-[solar--home-2-bold-duotone]', 'icon-[solar--home-2-bold]'],
@@ -69,61 +53,11 @@ function openToastTarget(target?: string) {
   if (target) router.push(target)
 }
 
-function toggleAiPanel() {
-  aiPanelOpen.value = !aiPanelOpen.value
-  if (aiPanelOpen.value && !aiLoaded.value) loadAiPanel()
-}
-
-async function loadAiPanel() {
-  try {
-    const { api } = await import('@/api/client')
-    aiProviders.value = await api<AiProvider[]>('/api/agent/providers')
-    aiSelectedProvider.value = usableAiProviders.value[0]?.id ?? ''
-    const raw = localStorage.getItem('wad_agent_conversations')
-    const convos = raw ? JSON.parse(raw) : []
-    if (convos.length > 0) {
-      aiMessages.value = convos[0].messages ?? []
-    } else {
-      aiMessages.value = [{ role: 'agent', text: '选择模型后直接描述目标。我会基于完整的 ADB/APK 能力帮你完成操作。' }]
-    }
-    aiLoaded.value = true
-  } catch { /* silent */ }
-}
-
-async function sendAiMessage() {
-  if (!aiPrompt.value.trim() || !aiSelectedProvider.value) return
-  const text = aiPrompt.value.trim()
-  aiMessages.value.push({ role: 'user', text })
-  aiPrompt.value = ''
-  aiRunning.value = true
-  try {
-    const { api: callApi } = await import('@/api/client')
-    const response = await callApi<AgentRunResponse>('/api/agent/runs', {
-      method: 'POST',
-      body: JSON.stringify({
-        prompt: text,
-        providerId: aiSelectedProvider.value,
-        deviceIds: [],
-        permissionMode: 'Default',
-        scopes: ['device:single'],
-        webSearchEnabled: false,
-        attachments: [],
-        history: aiMessages.value.slice(-12),
-      }),
-    })
-    aiMessages.value.push({ role: 'agent', text: response.message })
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '请求失败'
-    aiMessages.value.push({ role: 'agent', text: msg })
-  } finally {
-    aiRunning.value = false
-  }
-}
-
 onMounted(() => {
   window.addEventListener('wad:notify', pushToast)
   window.addEventListener('resize', updateIsMobile)
   updateIsMobile()
+  // On desktop, if user navigates to /agent, open the right panel instead
   if (!isMobile.value && route.name === 'agent') {
     aiPanelOpen.value = true
   }
@@ -146,53 +80,46 @@ onUnmounted(() => {
         <strong class="text-base font-semibold text-slate-800 dark:text-slate-100">Web ADB Devices</strong>
       </div>
       <nav class="space-y-1">
-        <!-- Nav items: hover shows bold-duotone, active shows bold-filled icon + sky highlight -->
         <RouterLink
           v-for="[key, href, icon, iconHover, iconActive] in nav"
           :key="key"
           :to="href"
-          class="nav-item group flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200"
+          class="nav-item group relative flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200"
           :class="$route.name === key ? 'nav-active' : 'nav-inactive'"
         >
-          <!-- Icon: active = bold-filled, inactive(hover) = bold-duotone, default = outline -->
-          <span
-            :class="[
-              $route.name === key ? iconActive : icon,
-              'size-5 transition-all duration-200',
-              $route.name !== key ? 'group-hover:hidden' : ''
-            ]"
-          />
-          <span
-            v-if="$route.name !== key"
-            :class="[iconHover, 'size-5 absolute transition-all duration-200 hidden group-hover:block']"
-          />
+          <span class="relative inline-flex size-5 shrink-0">
+            <span
+              :class="[
+                $route.name === key ? iconActive : icon,
+                'size-5 transition-all duration-200',
+                $route.name !== key ? 'group-hover:opacity-0' : ''
+              ]"
+            />
+            <span
+              v-if="$route.name !== key"
+              :class="[iconHover, 'size-5 absolute inset-0 transition-all duration-200 opacity-0 group-hover:opacity-100']"
+            />
+          </span>
           <span>{{ t(`nav.${key}`) }}</span>
         </RouterLink>
       </nav>
-
-      <!-- AI Panel Toggle Button -->
-      <button
-        class="mt-6 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
-        @click="toggleAiPanel"
-      >
-        <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--chat-round-dots-bold]', 'size-5']" />
-        <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
-      </button>
     </aside>
 
     <!-- Main Content Area -->
     <main :class="[
       route.name === 'login' ? '' : 'pb-20 lg:pb-0',
       route.name !== 'login' ? 'lg:ml-[260px]' : '',
-      aiPanelOpen && route.name !== 'login' && !isMobile ? 'lg:pr-[380px]' : ''
+      aiPanelOpen && route.name !== 'login' && !isMobile ? 'lg:pr-[400px]' : ''
     ]">
-      <!-- Mobile Header with menu toggle -->
+      <!-- Mobile Header with AI toggle -->
       <header v-if="route.name !== 'login'" class="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 py-3 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
-        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="mobileMenuOpen = !mobileMenuOpen">
+        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="router.push('/')">
           <span class="icon-[solar--hamburger-menu-linear size-6 text-slate-600 dark:text-slate-300]" />
         </button>
         <span class="font-semibold text-slate-800 dark:text-slate-100">{{ $t(`nav.${String(route.name) || 'dashboard'}`) }}</span>
-        <div class="w-10" />
+        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="router.push('/agent')">
+          <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-5 text-slate-600 dark:text-slate-300']" />
+        </button>
       </header>
 
       <div :class="route.name !== 'login' ? 'p-4 sm:p-6 lg:p-8' : ''">
@@ -200,11 +127,11 @@ onUnmounted(() => {
       </div>
     </main>
 
-    <!-- Right Side AI Panel (Desktop) - Full functional chat interface -->
+    <!-- Right Side AI Panel (Desktop) - Embedded AgentView -->
     <Transition name="panel-slide">
       <aside
         v-if="aiPanelOpen && route.name !== 'login' && !isMobile"
-        class="fixed right-0 top-0 z-30 hidden h-screen w-[380px] flex flex-col border-l border-slate-200/60 bg-white/90 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95"
+        class="fixed right-0 top-0 z-30 hidden h-screen w-[400px] flex-col border-l border-slate-200/60 bg-white/95 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95 lg:flex"
       >
         <!-- Panel Header -->
         <div class="flex items-center justify-between border-b border-slate-200/50 px-4 py-3 dark:border-slate-700/30">
@@ -216,49 +143,8 @@ onUnmounted(() => {
             <span class="icon-[solar--close-circle-bold size-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200]" />
           </button>
         </div>
-
-        <!-- Messages Area -->
-        <div class="flex-1 overflow-y-auto space-y-3 p-4">
-          <div v-if="!aiLoaded" class="flex items-center justify-center py-12">
-            <svg class="size-6 animate-spin text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-          </div>
-          <template v-else>
-            <div
-              v-for="(msg, idx) in aiMessages"
-              :key="idx"
-              class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm"
-              :class="msg.role === 'user'
-                ? 'ml-auto bg-sky-500 text-white'
-                : 'mr-auto border border-slate-200/60 bg-white/80 backdrop-blur-md text-slate-700 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-200'"
-            >{{ msg.text }}</div>
-            <div v-if="aiRunning" class="inline-flex items-center gap-2 rounded-2xl border border-slate-200/60 bg-white/80 px-3.5 py-2.5 text-xs shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
-              <span>AI 正在思考</span>
-              <span class="inline-flex gap-1"><span class="thinking-dot" /><span class="thinking-dot" /><span class="thinking-dot" /></span>
-            </div>
-          </template>
-        </div>
-
-        <!-- Input Area -->
-        <div class="border-t border-slate-200/50 p-3 dark:border-slate-700/30">
-          <textarea
-            v-model="aiPrompt"
-            placeholder="描述你的需求..."
-            rows="2"
-            class="w-full resize-none rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 transition-all focus:border-sky-400 focus:ring-1 focus:ring-sky-400/20 dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-200 dark:placeholder:text-slate-500"
-            @keydown.ctrl.enter.prevent="sendAiMessage"
-          />
-          <div class="mt-2 flex items-center justify-between gap-2">
-            <LiquidSelect v-model="aiSelectedProvider" class="min-w-36" :options="aiProviderOptions" placeholder="选择模型" />
-            <button
-              class="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50 transition-colors"
-              :disabled="aiRunning || !aiSelectedProvider || !aiPrompt.trim()"
-              @click="sendAiMessage"
-            >
-              <span class="icon-[solar--plain-2-bold size-3.5]" />
-              {{ aiRunning ? '发送中' : '发送' }}
-            </button>
-          </div>
-        </div>
+        <!-- Embedded AgentView in panel mode -->
+        <AgentPanel :is-panel-mode="true" />
       </aside>
     </Transition>
 

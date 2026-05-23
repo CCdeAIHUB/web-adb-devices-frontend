@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useDeviceStore, type AdbScannedDevice, type DeviceRecord } from '@/stores/devices'
 import { ApiError, api } from '@/api/client'
 import LiquidSelect from '@/components/LiquidSelect.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 const { t } = useI18n()
 const devices = useDeviceStore()
@@ -74,6 +75,8 @@ const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((dev
 const connectedWireless = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const unauthorizedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'unauthorized' && !isWirelessAdb(device.serial)))
 const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'offline'))
+// Filtered scan list for USB ADB section: only USB devices, excluding already-added ones
+const usbScanList = computed(() => (devices.adbScan?.devices ?? []).filter((device) => !isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const hasAnyScan = computed(() => Boolean(devices.adbScan))
 const groups = computed(() => [...new Set(devices.devices.map((device) => device.group).filter(Boolean))] as string[])
 const tags = computed(() => [...new Set(devices.devices.flatMap((device) => device.tags ?? []))])
@@ -316,29 +319,24 @@ onUnmounted(stopScanTimer)
 </script>
 
 <template>
-  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">设备</h1>
-        <p class="mt-1 text-sm text-slate-500">USB ADB、无线配对和 APK 在线状态统一显示在这里。</p>
-      </div>
-      <div class="flex gap-2">
-        <button
-          class="glass-button"
-          @click="scanAdb"
-        >
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+    <PageHeader>
+      <h1 class="text-xl font-semibold">设备</h1>
+      <p class="mt-1 text-sm text-slate-500">USB ADB、无线配对和 APK 在线状态统一显示在这里。</p>
+      <template #actions>
+        <button class="glass-button" @click="scanAdb">
           <span class="icon-[solar--refresh-bold-duotone] size-5" />
           <span>{{ devices.scanning ? '扫描中' : '扫描 ADB' }}</span>
         </button>
-        <button
-          class="glass-button glass-button-primary"
-          @click="openConnect('usb')"
-        >
+        <button class="glass-button glass-button-primary" @click="openConnect('usb')">
           <span class="icon-[solar--add-circle-bold-duotone] size-5" />
           <span>添加设备</span>
         </button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
+
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto">
 
     <div class="glass-panel mb-4 grid gap-3 p-3 lg:grid-cols-[1fr_180px_180px]">
       <input v-model="searchText" class="glass-input" placeholder="搜索设备名称、备注、ADB serial" />
@@ -543,7 +541,7 @@ onUnmounted(stopScanTimer)
 
                   <div v-else class="space-y-2">
                     <div
-                      v-for="device in devices.adbScan?.devices"
+                      v-for="device in usbScanList"
                       :key="device.serial"
                       class="grid gap-2 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800 sm:grid-cols-[1fr_auto]"
                     >
@@ -567,8 +565,8 @@ onUnmounted(stopScanTimer)
                       </button>
                     </div>
 
-                    <div v-if="devices.adbScan?.devices.length === 0" class="rounded-md bg-slate-100 p-4 text-sm text-slate-500 dark:bg-slate-800">
-                      暂未发现 USB ADB 设备。
+                    <div v-if="usbScanList.length === 0" class="rounded-md bg-slate-100 p-4 text-sm text-slate-500 dark:bg-slate-800">
+                      暂未发现新的 USB ADB 设备。
                     </div>
                   </div>
                 </div>
@@ -652,5 +650,6 @@ onUnmounted(stopScanTimer)
         </div>
       </div>
     </div>
+    </div><!-- end scrollable content -->
   </section>
 </template>

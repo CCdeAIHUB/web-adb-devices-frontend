@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { api } from '@/api/client'
 import { useDeviceStore, type DeviceRecord } from '@/stores/devices'
 import LiquidSelect from '@/components/LiquidSelect.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 interface SettingsResponse {
   values: Record<string, string | null>
@@ -101,13 +102,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 class="text-xl font-semibold">总览</h1>
-        <p class="mt-1 text-sm text-slate-500">设备状态、筛选和低频预览集中查看。</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+    <PageHeader>
+      <h1 class="text-xl font-semibold">总览</h1>
+      <p class="mt-1 text-sm text-slate-500">设备状态、筛选和低频预览集中查看。</p>
+      <template #actions>
         <button class="glass-button" @click="devices.load">
           <span class="icon-[solar--refresh-bold-duotone] size-5" />
           <span>刷新</span>
@@ -120,8 +119,11 @@ onUnmounted(() => {
           <span :class="[previewEnabled ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
           <span>{{ previewEnabled ? '关闭预览' : '开启预览' }}</span>
         </button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
+
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto">
 
     <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <div v-for="[label, value, icon] in stats" :key="label" class="glass-panel flex items-center justify-between gap-3 p-4">
@@ -185,5 +187,6 @@ onUnmounted(() => {
         </div>
       </RouterLink>
     </div>
+    </div><!-- end scrollable content -->
   </section>
 </template>

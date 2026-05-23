@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
 import LiquidSelect from '@/components/LiquidSelect.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
 interface AdbCommandResult {
   success: boolean
@@ -262,7 +263,11 @@ const isInitialLoad = ref(true)
 
 function onScreenError() {
   screenshotUrl.value = ''
-  message.value = '截图加载失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+  if (streaming.value) {
+    message.value = '实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+  } else {
+    message.value = '截图加载失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+  }
   // Only notify on user-triggered refresh, not on initial page load
   if (!isInitialLoad.value) {
     notify(message.value, 'error', '/help#adb-auth')
@@ -422,8 +427,12 @@ async function postSimple(path: string, body: object, successText: string) {
 onMounted(async () => {
   await devices.load()
   startPermissionPolling()
+  startDeviceStatePolling()
   if (canUseAdb.value) {
-    refreshScreenshot()
+    // Only auto-start streaming when both ADB and APK are connected
+    if (canUseAdb.value && canUseApk.value) {
+      startStream()
+    }
     // Auto-detect and install APK if needed
     await autoDetectAndInstallApk()
     // Mark initial load complete after a short delay to allow screenshot to load
@@ -451,17 +460,55 @@ async function autoDetectAndInstallApk() {
   }
 }
 
-onUnmounted(() => { stopTimer(); stopPermissionTimer(); document.removeEventListener('fullscreenchange', handleFullscreenChange) })
+onUnmounted(() => { stopTimer(); stopPermissionTimer(); stopDeviceStatePolling(); document.removeEventListener('fullscreenchange', handleFullscreenChange) })
+
+let deviceStateTimer: ReturnType<typeof window.setInterval> | undefined
+function startDeviceStatePolling() {
+  if (deviceStateTimer) return
+  // Poll device state every 10 seconds to detect ADB disconnections
+  deviceStateTimer = window.setInterval(async () => {
+    try {
+      await devices.load()
+    } catch { /* silent */ }
+  }, 10000)
+}
+function stopDeviceStatePolling() {
+  if (deviceStateTimer !== undefined) { clearInterval(deviceStateTimer); deviceStateTimer = undefined }
+}
+
+// Watch for device state changes - stop streaming if ADB disconnects
+watch(() => device.value?.displayState, (newState) => {
+  if (newState === 'Offline' && streaming.value) {
+    stopStream()
+  }
+})
 
 let permissionTimer: ReturnType<typeof window.setInterval> | undefined
 function startPermissionPolling() {
   if (permissionTimer) return
+  // Periodically refresh device state to pick up permission changes from APK heartbeat
+  // Also check input method via ADB since APK only sends permission state on initial connect
   permissionTimer = window.setInterval(async () => {
     if (!device.value?.apkVersion) return
     try {
-      const response = await api<{ permissions: Record<string, boolean> }>(controlUrl('permissions'))
-      const perms = response.permissions || {}
-      const allGranted = perms.accessibility && perms.inputMethod && perms.notifications && perms.batteryUnrestricted
+      // Refresh the device list to get updated permission state from APK
+      await devices.load()
+      // Also check input method via ADB command for more reliable detection
+      if (canUseAdb.value) {
+        const result = await api<AdbCommandResult>(controlUrl('terminal'), {
+          method: 'POST',
+          body: JSON.stringify({ command: 'shell settings get secure enabled_input_methods' }),
+        })
+        if (result.success && result.stdout) {
+          const apkPackage = 'com.webadb.devices'
+          const hasIme = result.stdout.toLowerCase().includes(apkPackage)
+          // Update local device permission state if different
+          if (device.value && device.value.permissions && device.value.permissions.inputMethod !== hasIme) {
+            device.value.permissions.inputMethod = hasIme
+          }
+        }
+      }
+      const allGranted = permissionRows.value.every(item => item.enabled)
       if (allGranted && showPermissionBanner.value) { showPermissionBanner.value = false; notify('所有权限已配置完成！', 'success'); stopPermissionTimer() }
       else if (!allGranted && device.value?.internalState === 'Online' && !showPermissionBanner.value) {
         setTimeout(() => { if (!permissionRows.value.every(item => item.enabled)) showPermissionBanner.value = true }, 3000)
@@ -473,10 +520,11 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 </script>
 
 <template>
-  <section class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <RouterLink class="mb-2 inline-flex items-center gap-2 text-sm text-sky-700 hover:underline dark:text-sky-300" to="/devices">
+  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+    <!-- Fixed header area -->
+    <div class="shrink-0">
+      <PageHeader>
+        <RouterLink class="mb-1 inline-flex items-center gap-2 text-sm text-sky-700 hover:underline dark:text-sky-300" to="/devices">
           <span class="icon-[solar--alt-arrow-left-outline] size-4" />
           <span>返回设备列表</span>
         </RouterLink>
@@ -484,36 +532,39 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
         <p class="mt-1 text-sm text-slate-500">
           {{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ device?.displayState || '未知状态' }} · {{ screenSize.width }} x {{ screenSize.height }}
         </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button class="glass-button hover:border-sky-300 hover:text-sky-700 dark:hover:border-sky-600 dark:hover:text-sky-300 transition-all duration-200" :disabled="!canUseAdb" @click="refreshScreenshot">
-          <span class="icon-[solar--refresh-bold-duotone] size-5" />
-          <span>刷新屏幕</span>
-        </button>
-        <button class="glass-button glass-button-primary" :disabled="!canUseAdb" @click="streaming ? stopStream() : startStream()">
-          <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
-          <span>{{ streaming ? '停止投屏' : '开启投屏' }}</span>
+        <template #actions>
+          <button class="glass-button hover:border-sky-300 hover:text-sky-700 dark:hover:border-sky-600 dark:hover:text-sky-300 transition-all duration-200" :disabled="!canUseAdb" @click="refreshScreenshot">
+            <span class="icon-[solar--refresh-bold-duotone] size-5" />
+            <span>刷新屏幕</span>
+          </button>
+          <button class="glass-button glass-button-primary" :disabled="!canUseAdb" @click="streaming ? stopStream() : startStream()">
+            <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
+            <span>{{ streaming ? '停止投屏' : '开启投屏' }}</span>
+          </button>
+        </template>
+      </PageHeader>
+
+      <!-- Tab bar -->
+      <div class="mb-4 flex gap-2 overflow-x-auto border-b border-slate-200 pb-2 dark:border-slate-800">
+        <button
+          v-for="[key, label, icon] in tabs"
+          :key="key"
+          class="tab-btn inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all duration-200"
+          :class="[
+            activeTab === key ? 'tab-btn-active' : 'tab-btn-inactive',
+            tabDisabled(key) ? '!cursor-not-allowed !opacity-40' : ''
+          ]"
+          :disabled="tabDisabled(key)"
+          @click="!tabDisabled(key) && (activeTab = key)"
+        >
+          <span :class="[icon, 'size-5 transition-colors duration-200']" />
+          <span>{{ label }}</span>
         </button>
       </div>
     </div>
 
-    <!-- Tab bar with proper hover styles -->
-    <div class="mb-4 flex gap-2 overflow-x-auto border-b border-slate-200 pb-2 dark:border-slate-800">
-      <button
-        v-for="[key, label, icon] in tabs"
-        :key="key"
-        class="tab-btn inline-flex h-10 shrink-0 items-center gap-2 rounded-lg px-3.5 text-sm font-medium transition-all duration-200"
-        :class="[
-          activeTab === key ? 'tab-btn-active' : 'tab-btn-inactive',
-          tabDisabled(key) ? '!cursor-not-allowed !opacity-40' : ''
-        ]"
-        :disabled="tabDisabled(key)"
-        @click="!tabDisabled(key) && (activeTab = key)"
-      >
-        <span :class="[icon, 'size-5 transition-colors duration-200']" />
-        <span>{{ label }}</span>
-      </button>
-    </div>
+    <!-- Scrollable content -->
+    <div class="flex-1 overflow-y-auto">
 
     <!-- Control feedback message - fixed position to avoid layout shift -->
     <Transition name="slide-down">
@@ -723,6 +774,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
         <span :class="[icon, 'size-5']" /><span>{{ label }}</span>
       </button>
     </div>
+    </div><!-- end scrollable content -->
   </section>
 </template>
 
