@@ -468,7 +468,8 @@ function startDeviceStatePolling() {
   // Poll device state every 10 seconds to detect ADB disconnections
   deviceStateTimer = window.setInterval(async () => {
     try {
-      await devices.load()
+      // Re-scan ADB to detect disconnections, then reload
+      await devices.scanAdb()
     } catch { /* silent */ }
   }, 10000)
 }
@@ -623,8 +624,8 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />
               <span :class="controlEnabled ? 'text-sky-300' : 'text-slate-300'">控制设备</span>
             </label>
-            <button class="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-sky-300 transition-colors" title="全屏" :disabled="!canUseAdb" @click="toggleFullscreen">
-              <span class="icon-[solar--resize-bold size-4" />
+            <button class="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-sky-300 transition-colors" title="全屏" @click="toggleFullscreen">
+              <span :class="[isFullscreen ? 'icon-[solar--quit-full-screen-bold]' : 'icon-[solar--full-screen-bold]', 'size-4']" />
             </button>
           </div>
         </div>

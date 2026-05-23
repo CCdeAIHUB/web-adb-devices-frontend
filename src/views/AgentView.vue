@@ -307,8 +307,8 @@ if (typeof window !== 'undefined') {
 
 <template>
   <!-- Full page mode (mobile /agent route or desktop non-panel) -->
-  <section v-if="!isPanelMode" class="min-h-[calc(100vh-8rem)] text-slate-950 dark:text-slate-100">
-    <div class="flex h-[calc(100vh-8rem)] flex-col overflow-hidden">
+  <section v-if="!isPanelMode" class="text-slate-950 dark:text-slate-100">
+    <div class="flex h-[calc(100vh-10rem)] flex-col overflow-hidden pb-4 lg:h-[calc(100vh-8rem)] lg:pb-0">
       <!-- Header with conversation switcher on mobile -->
       <div class="shrink-0 border-b border-white/40 px-4 py-3 sm:px-5 sm:py-4 dark:border-white/10">
         <div class="flex items-center justify-between gap-2">
@@ -587,10 +587,12 @@ if (typeof window !== 'undefined') {
       />
       <div class="mt-2 flex items-center justify-between gap-2">
         <LiquidSelect v-model="selectedProvider" class="min-w-36" :options="providerOptions" placeholder="选择模型" />
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5">
+          <!-- Device select button -->
           <div class="relative">
-            <button class="device-menu-trigger rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" title="选择设备" @click.stop="deviceMenuOpen = !deviceMenuOpen">
-              <span class="icon-[solar--devices-outline size-4" />
+            <button class="device-menu-trigger inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" :class="selectedDevices.length > 0 ? 'text-sky-600 dark:text-sky-400' : ''" title="选择设备" @click.stop="deviceMenuOpen = !deviceMenuOpen">
+              <span class="icon-[solar--devices-outline] size-4" />
+              <span class="text-xs">{{ selectedDevices.length > 0 ? `${selectedDevices.length}台设备` : '设备' }}</span>
             </button>
             <div v-if="deviceMenuOpen" class="device-menu-popup glass-menu absolute bottom-10 right-0 z-20 grid max-h-60 w-64 gap-1 overflow-auto p-2">
               <label v-for="device in devices.devices" :key="device.deviceId" class="flex cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 text-xs hover:bg-white/40 dark:hover:bg-white/10">
@@ -600,18 +602,23 @@ if (typeof window !== 'undefined') {
                   <span class="block truncate text-slate-500">{{ device.displayState }}</span>
                 </span>
               </label>
+              <div v-if="devices.devices.length === 0" class="p-3 text-sm text-slate-500">暂无设备。</div>
             </div>
           </div>
-          <label class="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" title="添加文件">
-            <span class="icon-[solar--paperclip-outline size-4" />
+          <!-- File attach button -->
+          <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" title="添加文件">
+            <span class="icon-[solar--paperclip-outline] size-4" />
             <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
           </label>
+          <!-- Permission mode -->
+          <LiquidSelect v-model="permissionMode" class="min-w-24 !text-xs" :options="permissionOptions" />
+          <!-- Send button -->
           <button
             class="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50 transition-colors"
             :disabled="running || !selectedProvider || !prompt.trim()"
             @click="sendMessage"
           >
-            <span class="icon-[solar--plain-2-bold size-3.5]" />
+            <span class="icon-[solar--plain-2-bold] size-3.5" />
             {{ running ? '发送中' : '发送' }}
           </button>
         </div>
