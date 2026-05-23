@@ -60,6 +60,9 @@ const controlEnabled = ref(false)
 const bundledApkInstalled = ref(false)
 const busy = ref(false)
 const message = ref('')
+const installingApk = ref(false)
+const installingApkName = ref('')
+const showPermissionBanner = ref(false)
 const inputText = ref('')
 const pointerDown = ref<{ x: number; y: number; time: number } | null>(null)
 const liveScreen = ref({ width: 1080, height: 2400 })
@@ -401,21 +404,28 @@ async function installApk(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
+  installingApk.value = true
+  installingApkName.value = file.name
+  busy.value = true
   const form = new FormData()
   form.append('file', file)
-  busy.value = true
   try {
     const response = await fetch(controlUrl('apps/install'), { method: 'POST', credentials: 'include', body: form })
     const body = await response.json()
     message.value = body.success ? 'APK 已安装。' : body.message || body.stderr || 'APK 安装失败。'
+    notify(message.value, body.success ? 'success' : 'error')
     await loadPackages()
   } finally {
     busy.value = false
+    installingApk.value = false
+    installingApkName.value = ''
     input.value = ''
   }
 }
 
 async function installBundledApk() {
+  installingApk.value = true
+  installingApkName.value = '内置 APK'
   busy.value = true
   try {
     const result = await api<AdbCommandResult>(controlUrl('apps/install-bundled'), {
@@ -433,6 +443,8 @@ async function installBundledApk() {
     notify(message.value, 'error', '/help#install-apk')
   } finally {
     busy.value = false
+    installingApk.value = false
+    installingApkName.value = ''
   }
 }
 
@@ -524,9 +536,48 @@ async function postSimple(path: string, body: object, successText: string) {
 onMounted(async () => {
   await devices.load()
   refreshScreenshot()
+  startPermissionPolling()
 })
 
-onUnmounted(stopTimer)
+onUnmounted(() => {
+  stopTimer()
+  stopPermissionTimer()
+})
+
+let permissionTimer: ReturnType<typeof window.setInterval> | undefined
+
+function startPermissionPolling() {
+  if (permissionTimer) return
+  permissionTimer = window.setInterval(async () => {
+    if (!device.value?.apkVersion) return
+    try {
+      const response = await api<{ permissions: Record<string, boolean> }>(controlUrl('permissions'))
+      const perms = response.permissions || {}
+      const allGranted = perms.accessibility && perms.inputMethod && perms.notifications && perms.batteryUnrestricted
+      if (allGranted && showPermissionBanner.value) {
+        showPermissionBanner.value = false
+        notify('所有权限已配置完成！', 'success')
+        stopPermissionTimer()
+      } else if (!allGranted && device.value?.internalState === 'Online' && !showPermissionBanner.value) {
+        // 权限未完全授予且APK在线，显示权限配置提醒（延迟3秒避免安装刚完成时立即弹出）
+        setTimeout(() => {
+          if (!permissionRows.value.every(item => item.enabled)) {
+            showPermissionBanner.value = true
+          }
+        }, 3000)
+      }
+    } catch {
+      // 静默失败
+    }
+  }, 5000)
+}
+
+function stopPermissionTimer() {
+  if (permissionTimer !== undefined) {
+    clearInterval(permissionTimer)
+    permissionTimer = undefined
+  }
+}
 </script>
 
 <template>
@@ -572,6 +623,35 @@ onUnmounted(stopTimer)
     </div>
 
     <div v-if="message" class="mb-4 rounded-md bg-slate-100 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ message }}</div>
+
+    <!-- 安装进度横幅 -->
+    <Transition name="slide-down">
+      <div v-if="installingApk" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+        <span class="inline-flex items-center gap-2">
+          <svg class="size-5 animate-spin text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          正在安装 {{ installingApkName }}...
+        </span>
+        <span class="text-xs text-sky-600 dark:text-sky-400">安装过程中请勿断开设备连接</span>
+      </div>
+    </Transition>
+
+    <!-- 权限配置提醒横幅 -->
+    <Transition name="slide-down">
+      <div v-if="showPermissionBanner && device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <div class="flex items-center gap-2">
+          <span class="icon-[solar--shield-check-bold-duotone] size-5 text-emerald-500" />
+          <span>APK 安装完成！请在手机上配置权限以启用完整功能。</span>
+          <RouterLink class="ml-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900 dark:text-emerald-300" to="/help#apk-permissions">
+            查看权限指南
+            <span class="icon-[solar--alt-arrow-right-outline] size-3" />
+          </RouterLink>
+        </div>
+        <button class="rounded-md bg-white/60 px-3 py-1 text-xs font-medium text-slate-600 transition-all hover:bg-white dark:bg-white/10 dark:text-slate-300 dark:hover:bg-white/20" @click="showPermissionBanner = false">稍后</button>
+      </div>
+    </Transition>
 
     <div v-if="!canUseAdb && !canUseApk" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       该设备当前未连接 ADB，也没有 APK 在线通道。请先连接 ADB 或安装并启动 APK 后再操作。
