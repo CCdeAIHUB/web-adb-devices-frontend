@@ -319,7 +319,7 @@ onUnmounted(stopScanTimer)
 </script>
 
 <template>
-  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">设备</h1>
       <p class="mt-1 text-sm text-slate-500">USB ADB、无线配对和 APK 在线状态统一显示在这里。</p>
@@ -336,7 +336,7 @@ onUnmounted(stopScanTimer)
     </PageHeader>
 
     <!-- Scrollable content -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto pr-1">
 
     <div class="glass-panel mb-4 grid gap-3 p-3 lg:grid-cols-[1fr_180px_180px]">
       <input v-model="searchText" class="glass-input" placeholder="搜索设备名称、备注、ADB serial" />

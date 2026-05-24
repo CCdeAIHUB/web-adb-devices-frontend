@@ -113,9 +113,7 @@ onUnmounted(() => {
     ]">
       <!-- Mobile Header with AI toggle -->
       <header v-if="route.name !== 'login'" class="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 py-3 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
-        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="router.push('/')">
-          <span class="icon-[solar--hamburger-menu-linear] size-6 text-slate-600 dark:text-slate-300" />
-        </button>
+        <div class="size-10" aria-hidden="true" />
         <span class="font-semibold text-slate-800 dark:text-slate-100">{{ $t(`nav.${String(route.name) || 'dashboard'}`) }}</span>
         <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="router.push('/agent')">
           <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-5 text-slate-600 dark:text-slate-300']" />

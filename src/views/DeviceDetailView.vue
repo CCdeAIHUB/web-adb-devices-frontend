@@ -44,8 +44,38 @@ const route = useRoute()
 const devices = useDeviceStore()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const device = computed(() => devices.devices.find((item) => item.deviceId === deviceId.value))
-const canUseAdb = computed(() => Boolean(device.value?.temporaryAdbSerial || deviceId.value.startsWith('adb:')))
+const adbReadyStates = new Set(['Matched', 'Online', 'Authorized', 'Updating'])
+const canUseAdb = computed(() => {
+  const current = device.value
+  if (!current) return false
+  if (!current.temporaryAdbSerial && !current.deviceId.startsWith('adb:')) return false
+  return adbReadyStates.has(current.displayState)
+})
 const canUseApk = computed(() => device.value?.internalState === 'Online' || device.value?.internalState === 'PermissionRequired')
+const canUseScreenPreview = computed(() => canUseAdb.value || canUseApk.value)
+const stateLabel = computed(() => {
+  const current = device.value
+  if (!current) return '未发现设备'
+  const labels: Record<string, string> = {
+    Offline: '离线',
+    Unauthorized: 'ADB 未授权',
+    Matched: 'ADB 已连接',
+    Online: 'APK 在线',
+    Authorized: '已授权',
+    Protected: '受保护',
+    Updating: '更新中',
+  }
+  return labels[current.displayState] ?? current.displayState
+})
+const adbDisabledReason = computed(() => {
+  const current = device.value
+  if (!current) return '设备记录尚未加载，控制功能暂不可用。'
+  if (current.displayState === 'Offline') return '设备离线，ADB 控制已禁用。'
+  if (current.displayState === 'Unauthorized') return '请先在手机上允许 USB 调试授权。'
+  if (current.displayState === 'Protected') return '设备处于保护状态，控制功能已禁用。'
+  if (!current.temporaryAdbSerial && !current.deviceId.startsWith('adb:')) return '未检测到可用的 ADB serial。'
+  return ''
+})
 const permissionRows = computed(() => [
   { key: 'accessibility', label: '无障碍服务', enabled: Boolean(device.value?.permissions?.accessibility) },
   { key: 'inputMethod', label: '输入法', enabled: Boolean(device.value?.permissions?.inputMethod) },
@@ -56,7 +86,7 @@ const missingPermissionNames = computed(() => permissionRows.value.filter((item)
 
 // Dynamic placeholder text for screen area
 const screenPlaceholderText = computed(() => {
-  if (canUseApk.value && !canUseAdb.value) return '等待 ADB 连接以启用完整控制。'
+  if (canUseApk.value && !canUseAdb.value) return 'APK 在线。若还没有画面，请在手机端开启屏幕预览权限。'
   if (!canUseAdb.value && !canUseApk.value) return '等待设备连接或安装 APK。'
   if (device.value?.apkVersion && device.value.internalState === 'PermissionRequired') return '请在手机上完成权限配置。'
   if (!device.value?.apkVersion) return '请先安装 APK 以获取实时控制能力。'
@@ -129,9 +159,8 @@ const collapsedTileCount = ref(6)
 const iconTopPadding = ref(0)
 
 const screenSize = computed(() => {
-  // Use device record's resolution first (updated via heartbeat), fallback to live screenshot dimensions
-  const w = device.value?.screenWidth || liveScreen.value.width || 1080
-  const h = device.value?.screenHeight || liveScreen.value.height || 2400
+  const w = liveScreen.value.width || device.value?.screenWidth || 1080
+  const h = liveScreen.value.height || device.value?.screenHeight || 2400
   return { width: w, height: h }
 })
 const isLandscape = computed(() => screenSize.value.width > screenSize.value.height)
@@ -227,8 +256,8 @@ function notify(message: string, type: 'success' | 'error' | 'info' = 'info', ta
 }
 
 function refreshScreenshot() {
-  if (!canUseAdb.value) {
-    message.value = '该设备还没有可用的 ADB serial，无法获取屏幕。'
+  if (!canUseScreenPreview.value) {
+    message.value = '该设备还没有可用的 ADB 或 APK 屏幕预览通道。'
     return
   }
   const format = streamQuality.value === 'jpeg' ? '&format=jpeg' : ''
@@ -236,7 +265,7 @@ function refreshScreenshot() {
 }
 
 async function saveScreenshot() {
-  if (!canUseAdb.value) return
+  if (!canUseScreenPreview.value) return
   try {
     const response = await fetch(controlUrl('control/screenshot'), { credentials: 'include' })
     if (!response.ok) {
@@ -285,6 +314,10 @@ function onScreenError() {
 }
 
 function startStream() {
+  if (!canUseScreenPreview.value) {
+    message.value = adbDisabledReason.value || '当前设备无法启动实时屏幕视频。'
+    return
+  }
   streaming.value = true
   refreshScreenshot()
   stopTimer()
@@ -446,11 +479,15 @@ onMounted(async () => {
   await devices.load()
   startPermissionPolling()
   startDeviceStatePolling()
-  if (canUseAdb.value) {
-    // Only auto-start streaming when both ADB and APK are connected
-    if (canUseAdb.value && canUseApk.value) {
+  if (canUseScreenPreview.value) {
+    if (canUseApk.value) {
       startStream()
+    } else if (canUseAdb.value) {
+      refreshScreenshot()
     }
+  }
+
+  if (canUseAdb.value) {
     // Auto-detect and install APK if needed
     await autoDetectAndInstallApk()
     // Mark initial load complete after a short delay to allow screenshot to load
@@ -496,8 +533,8 @@ function stopDeviceStatePolling() {
 }
 
 // Watch for device state changes - stop streaming if ADB disconnects
-watch(() => device.value?.displayState, (newState) => {
-  if (newState === 'Offline' && streaming.value) {
+watch(() => canUseScreenPreview.value, (ready) => {
+  if (!ready && streaming.value) {
     stopStream()
   }
 })
@@ -539,7 +576,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 </script>
 
 <template>
-  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <!-- Fixed header area -->
     <div class="shrink-0">
       <PageHeader>
@@ -548,18 +585,13 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <span>返回设备列表</span>
         </RouterLink>
         <h1 class="text-xl font-semibold">{{ device?.model || deviceId }}</h1>
-        <p class="mt-1 text-sm text-slate-500">
-          {{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ device?.displayState || '未知状态' }} · {{ screenSize.width }} x {{ screenSize.height }}
-        </p>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          <span class="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ stateLabel }}</span>
+          <span :class="canUseAdb ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'" class="rounded-full px-2.5 py-1 text-xs font-medium">ADB {{ canUseAdb ? '可用' : '不可用' }}</span>
+          <span :class="canUseApk ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'" class="rounded-full px-2.5 py-1 text-xs font-medium">APK {{ canUseApk ? '在线' : '未在线' }}</span>
+          <span>{{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ screenSize.width }} x {{ screenSize.height }}</span>
+        </div>
         <template #actions>
-          <button class="glass-button hover:border-sky-300 hover:text-sky-700 dark:hover:border-sky-600 dark:hover:text-sky-300 transition-all duration-200" :disabled="!canUseAdb" @click="refreshScreenshot">
-            <span class="icon-[solar--refresh-bold-duotone] size-5" />
-            <span>刷新屏幕</span>
-          </button>
-          <button class="glass-button glass-button-primary" :disabled="!canUseAdb" @click="streaming ? stopStream() : startStream()">
-            <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
-            <span>{{ streaming ? '停止投屏' : '开启投屏' }}</span>
-          </button>
         </template>
       </PageHeader>
 
@@ -583,7 +615,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
     </div>
 
     <!-- Scrollable content -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto pr-1">
 
     <!-- Control feedback message - fixed position to avoid layout shift -->
     <Transition name="slide-down">
@@ -610,8 +642,11 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
     </Transition>
 
     <!-- Status banners -->
+    <div v-if="!canUseAdb && adbDisabledReason" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+      {{ adbDisabledReason }} 依赖 ADB 的按钮已自动禁用。
+    </div>
     <div v-if="!canUseAdb && !canUseApk" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">该设备当前未连接 ADB，也没有 APK 在线通道。请先连接 ADB 或安装并启动 APK 后再操作。</div>
-    <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">APK 已在线，但当前页面大部分控制功能依赖 ADB，相关按钮已禁用。</div>
+    <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">APK 已在线，可以使用实时屏幕视频；点击、按键、软件管理等依赖 ADB 的控制按钮已禁用。若没有画面，请在手机端开启屏幕预览权限。</div>
     <div v-else-if="canUseAdb && device?.internalState === 'PermissionRequired'" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       <div class="min-w-0"><p class="font-medium">APK 已连接，但还需要开启权限：{{ missingPermissionNames.join('、') || '等待手机端上报' }}</p><div class="mt-2 flex flex-wrap gap-2"><span v-for="item in permissionRows" :key="item.key" class="rounded-full px-2.5 py-1 text-xs font-medium" :class="item.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'">{{ item.label }}：{{ item.enabled ? '已开启' : '未开启' }}</span></div></div>
       <RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink>
@@ -632,23 +667,32 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
             <span v-else-if="canUseApk" class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">APK 待授权</span>
             <span v-else class="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-200">ADB 控制</span>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="mr-1 text-xs font-semibold text-slate-300">截图流</span>
             <!-- Transport mode selector -->
-            <div class="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
-              <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'tcp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'tcp'">TCP</button>
-              <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'udp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'udp'">UDP</button>
+            <div class="flex h-10 rounded-lg border border-white/10 bg-white/5 p-1 text-xs">
+              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="transportMode === 'tcp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="transportMode = 'tcp'">TCP</button>
+              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="transportMode === 'udp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="transportMode = 'udp'">UDP</button>
             </div>
             <!-- Stream config -->
-            <LiquidSelect v-model="streamInterval" class="min-w-28 !text-xs !py-1 !border-white/10 !bg-white/5" :options="streamIntervalOptions" />
-            <div class="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
-              <button class="rounded-md px-2.5 py-1 transition-all" :class="streamQuality === 'png' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="streamQuality = 'png'">PNG</button>
-              <button class="rounded-md px-2.5 py-1 transition-all" :class="streamQuality === 'jpeg' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="streamQuality = 'jpeg'">JPEG</button>
+            <LiquidSelect v-model="streamInterval" class="min-w-28 !h-10 !border-white/10 !bg-white/5 !py-1 !text-xs" :options="streamIntervalOptions" />
+            <div class="flex h-10 rounded-lg border border-white/10 bg-white/5 p-1 text-xs">
+              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="streamQuality === 'png' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
+              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="streamQuality === 'jpeg' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
-            <label class="glass-toggle inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-sm backdrop-blur-sm transition-all hover:bg-white/10" :class="controlEnabled ? 'border-sky-400/60 bg-sky-500/15' : ''">
+            <button class="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 transition-all duration-300 hover:border-sky-400/60 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!canUseScreenPreview" @click="refreshScreenshot">
+              <span class="icon-[solar--refresh-bold-duotone] size-5" />
+              <span>刷新屏幕</span>
+            </button>
+            <button class="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-500 px-3 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400" :disabled="!canUseScreenPreview" @click="streaming ? stopStream() : startStream()">
+              <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
+              <span>{{ streaming ? '停止实时屏幕视频' : '实时屏幕视频' }}</span>
+            </button>
+            <label class="glass-toggle inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 text-sm backdrop-blur-sm transition-all duration-300 hover:bg-white/10" :class="controlEnabled ? 'border-sky-400/60 bg-sky-500/15' : ''">
               <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />
               <span :class="controlEnabled ? 'text-sky-300' : 'text-slate-300'">控制设备</span>
             </label>
-            <button class="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-sky-300 transition-colors" title="全屏" @click="toggleFullscreen">
+            <button class="inline-grid h-10 w-10 place-items-center rounded-lg text-slate-400 transition-all duration-300 hover:bg-white/10 hover:text-sky-300" title="全屏" @click="toggleFullscreen">
               <span :class="[isFullscreen ? 'icon-[solar--quit-full-screen-bold]' : 'icon-[solar--full-screen-bold]', 'size-4']" />
             </button>
           </div>
@@ -739,15 +783,15 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
         <h2 class="mb-3 text-sm font-semibold">软件操作</h2>
         <p class="mb-3 break-all text-sm text-slate-500">{{ selectedPackage || '请选择一个软件包。' }}</p>
         <div class="grid grid-cols-2 gap-2">
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="appAction('launch')">运行</button>
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="appAction('forceStop')">强制停止</button>
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="appAction('disable')">禁用</button>
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="appAction('enable')">启用</button>
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="extractApk()">提取 APK</button>
-          <button class="app-action-btn" :disabled="!selectedPackage" @click="appAction('info')">软件信息</button>
-          <button class="app-action-btn-danger" :disabled="!selectedPackage" @click="appAction('clear')">清除数据</button>
-          <button class="app-action-btn-danger" :disabled="!selectedPackage" @click="appAction('uninstall')">卸载</button>
-          <button class="col-span-2 app-action-btn-warning" :disabled="!selectedPackage" @click="appAction('uninstallKeepData')">保留数据卸载</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('launch')">运行</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('forceStop')">强制停止</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('disable')">禁用</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('enable')">启用</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="extractApk()">提取 APK</button>
+          <button class="app-action-btn" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('info')">软件信息</button>
+          <button class="app-action-btn-danger" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('clear')">清除数据</button>
+          <button class="app-action-btn-danger" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('uninstall')">卸载</button>
+          <button class="col-span-2 app-action-btn-warning" :disabled="busy || !canUseAdb || !selectedPackage" @click="appAction('uninstallKeepData')">保留数据卸载</button>
         </div>
         <pre class="mt-3 max-h-80 overflow-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">{{ appInfo || '软件信息会显示在这里。' }}</pre>
       </div>

@@ -34,7 +34,10 @@ const stats = computed(() => [
 ])
 
 function canPreview(device: DeviceRecord) {
-  return previewEnabled.value && Boolean(device.apkVersion) && Boolean(device.temporaryAdbSerial || device.deviceId.startsWith('adb:')) && device.displayState !== 'Offline'
+  return previewEnabled.value && device.displayState !== 'Offline' && (
+    Boolean(device.temporaryAdbSerial || device.deviceId.startsWith('adb:')) ||
+    Boolean(device.apkVersion)
+  )
 }
 
 function previewUrl(device: DeviceRecord) {
@@ -102,7 +105,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="flex min-h-[calc(100vh-8rem)] flex-col text-slate-950 dark:text-slate-100">
+  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">总览</h1>
       <p class="mt-1 text-sm text-slate-500">设备状态、筛选和低频预览集中查看。</p>
@@ -123,7 +126,7 @@ onUnmounted(() => {
     </PageHeader>
 
     <!-- Scrollable content -->
-    <div class="flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto pr-1">
 
     <div class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <div v-for="[label, value, icon] in stats" :key="label" class="glass-panel flex items-center justify-between gap-3 p-4">

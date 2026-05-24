@@ -19,7 +19,7 @@ const toggleAiPanel = inject<() => void>('toggleAiPanel', () => {})
         @click="toggleAiPanel"
       >
         <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-4.5']" />
-        <span>{{ aiPanelOpen ? '关闭AI' : 'AI 助手' }}</span>
+        <span>{{ aiPanelOpen ? '关闭 AI' : 'AI 助手' }}</span>
       </button>
     </div>
   </div>
