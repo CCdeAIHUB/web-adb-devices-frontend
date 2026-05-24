@@ -67,6 +67,15 @@ const screenPlaceholderText = computed(() => {
 const isFullscreen = ref(false)
 const screenContainerRef = ref<HTMLElement | null>(null)
 const transportMode = ref<'tcp' | 'udp'>('tcp')
+const streamInterval = ref('1200') // ms between screenshot refreshes
+const streamQuality = ref<'png' | 'jpeg'>('png')
+
+const streamIntervalOptions = [
+  { label: '低频 (2s)', value: '2000' },
+  { label: '标准 (1.2s)', value: '1200' },
+  { label: '流畅 (0.6s)', value: '600' },
+  { label: '极速 (0.3s)', value: '300' },
+]
 
 function toggleFullscreen() {
   const el = screenContainerRef.value
@@ -222,7 +231,8 @@ function refreshScreenshot() {
     message.value = '该设备还没有可用的 ADB serial，无法获取屏幕。'
     return
   }
-  screenshotUrl.value = `${controlUrl('control/screenshot')}?t=${Date.now()}`
+  const format = streamQuality.value === 'jpeg' ? '&format=jpeg' : ''
+  screenshotUrl.value = `${controlUrl('control/screenshot')}?t=${Date.now()}${format}`
 }
 
 async function saveScreenshot() {
@@ -278,8 +288,16 @@ function startStream() {
   streaming.value = true
   refreshScreenshot()
   stopTimer()
-  refreshTimer = window.setInterval(refreshScreenshot, 1200)
+  refreshTimer = window.setInterval(refreshScreenshot, parseInt(streamInterval.value))
 }
+
+// Restart stream timer when interval changes during streaming
+watch(streamInterval, (newVal) => {
+  if (streaming.value) {
+    stopTimer()
+    refreshTimer = window.setInterval(refreshScreenshot, parseInt(newVal))
+  }
+})
 
 function stopStream() {
   streaming.value = false
@@ -619,6 +637,12 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
             <div class="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
               <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'tcp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'tcp'">TCP</button>
               <button class="rounded-md px-2.5 py-1 transition-all" :class="transportMode === 'udp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="transportMode = 'udp'">UDP</button>
+            </div>
+            <!-- Stream config -->
+            <LiquidSelect v-model="streamInterval" class="min-w-28 !text-xs !py-1 !border-white/10 !bg-white/5" :options="streamIntervalOptions" />
+            <div class="flex rounded-lg border border-white/10 bg-white/5 p-0.5 text-xs">
+              <button class="rounded-md px-2.5 py-1 transition-all" :class="streamQuality === 'png' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="streamQuality = 'png'">PNG</button>
+              <button class="rounded-md px-2.5 py-1 transition-all" :class="streamQuality === 'jpeg' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
             <label class="glass-toggle inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-sm backdrop-blur-sm transition-all hover:bg-white/10" :class="controlEnabled ? 'border-sky-400/60 bg-sky-500/15' : ''">
               <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />

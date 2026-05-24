@@ -60,6 +60,60 @@ const notice = ref('')
 const attachments = ref<AttachmentItem[]>([])
 const isMobileView = ref(false)
 const conversationDropdownOpen = ref(false)
+const voiceListening = ref(false)
+const voiceSupported = ref(false)
+
+// Check Web Speech API support
+if (typeof window !== 'undefined') {
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  voiceSupported.value = !!SpeechRecognition
+}
+
+let voiceRecognition: any = null
+
+function toggleVoice() {
+  if (!voiceSupported.value) {
+    notify('当前浏览器不支持语音输入，请使用 Chrome 浏览器。', 'error')
+    return
+  }
+  if (voiceListening.value) {
+    stopVoice()
+    return
+  }
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  voiceRecognition = new SpeechRecognition()
+  voiceRecognition.lang = 'zh-CN'
+  voiceRecognition.interimResults = true
+  voiceRecognition.continuous = false
+  voiceRecognition.onresult = (event: any) => {
+    let transcript = ''
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript
+    }
+    prompt.value = transcript
+  }
+  voiceRecognition.onend = () => {
+    voiceListening.value = false
+  }
+  voiceRecognition.onerror = (event: any) => {
+    voiceListening.value = false
+    if (event.error === 'not-allowed') {
+      notify('麦克风权限被拒绝，请在浏览器设置中允许。', 'error')
+    } else if (event.error !== 'aborted') {
+      notify('语音识别出错，请重试。', 'error')
+    }
+  }
+  voiceListening.value = true
+  voiceRecognition.start()
+}
+
+function stopVoice() {
+  if (voiceRecognition) {
+    voiceRecognition.abort()
+    voiceRecognition = null
+  }
+  voiceListening.value = false
+}
 
 function checkMobile() {
   isMobileView.value = typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -301,6 +355,7 @@ if (typeof window !== 'undefined') {
   onUnmounted(() => {
     window.removeEventListener('resize', checkMobile)
     document.removeEventListener('click', onDocumentClick)
+    stopVoice()
   })
 }
 </script>
@@ -462,6 +517,11 @@ if (typeof window !== 'undefined') {
                 <span>文件/图片</span>
                 <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
               </label>
+              <button class="glass-button" :class="voiceListening ? '!bg-red-500/15 !border-red-400/50' : ''" :title="voiceSupported ? (voiceListening ? '停止录音' : '语音输入') : '浏览器不支持语音输入'" @click="toggleVoice">
+                <span v-if="voiceListening" class="icon-[solar--stop-circle-bold-duotone] size-5 text-red-400 animate-pulse" />
+                <span v-else class="icon-[solar--microphone-3-bold-duotone] size-5" :class="!voiceSupported ? 'opacity-40' : ''" />
+                <span>{{ voiceListening ? '录音中' : '语音' }}</span>
+              </button>
             </div>
             <button class="glass-button glass-button-primary" :disabled="running || !prompt.trim()" @click="sendMessage">
               <span class="icon-[solar--plain-2-outline] size-5" />
@@ -502,8 +562,9 @@ if (typeof window !== 'undefined') {
           <!-- Input row with icon buttons -->
           <div class="flex items-end gap-2">
             <!-- Voice button -->
-            <button class="glass-button !p-2.5 shrink-0" title="语音输入">
-              <span class="icon-[solar--microphone-3-bold-duotone size-5" />
+            <button class="glass-button !p-2.5 shrink-0 transition-colors" :class="voiceListening ? '!bg-red-500/20 !border-red-400/50' : ''" :title="voiceSupported ? (voiceListening ? '停止录音' : '语音输入') : '浏览器不支持语音输入'" @click="toggleVoice">
+              <span v-if="voiceListening" class="icon-[solar--stop-circle-bold-duotone] size-5 text-red-400 animate-pulse" />
+              <span v-else class="icon-[solar--microphone-3-bold-duotone] size-5" :class="!voiceSupported ? 'opacity-40' : ''" />
             </button>
             
             <!-- Text input -->
@@ -609,6 +670,12 @@ if (typeof window !== 'undefined') {
           <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" title="添加文件">
             <span class="icon-[solar--paperclip-outline] size-4" />
             <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
+          </label>
+          <!-- Web search toggle -->
+          <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" :class="webSearchEnabled ? 'text-sky-600 dark:text-sky-400' : ''">
+            <input type="checkbox" class="size-3 accent-sky-500" v-model="webSearchEnabled" />
+            <span class="icon-[solar--global-outline] size-3.5" />
+            <span>联网</span>
           </label>
           <!-- Permission mode -->
           <LiquidSelect v-model="permissionMode" class="min-w-24 !text-xs" :options="permissionOptions" />
