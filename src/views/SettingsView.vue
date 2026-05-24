@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ApiError, api } from '@/api/client'
 import LiquidSelect from '@/components/LiquidSelect.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import { useClientMode } from '@/composables/useClientMode'
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const { isDesktopClient, isMobileClient } = useClientMode()
 
 type FieldType = 'text' | 'password' | 'number' | 'select' | 'toggle'
 
@@ -195,7 +197,6 @@ const defaultValues: Record<string, string> = Object.fromEntries(
 
 const selectedKey = ref(sections[0].key)
 const selected = computed(() => sections.find((section) => section.key === selectedKey.value) ?? sections[0])
-const isMobile = ref(false)
 const mobileDetailOpen = ref(false)
 const values = reactive<Record<string, string>>({})
 const runtime = ref<Record<string, unknown>>({})
@@ -247,13 +248,9 @@ function setFieldValue(key: string, value: string | boolean) {
   values[key] = typeof value === 'boolean' ? String(value) : value
 }
 
-function updateIsMobile() {
-  isMobile.value = typeof window !== 'undefined' ? window.innerWidth < 1024 : false
-}
-
 function selectSection(key: string) {
   selectedKey.value = key
-  if (isMobile.value) {
+  if (isMobileClient.value) {
     mobileDetailOpen.value = true
   }
 }
@@ -371,16 +368,11 @@ async function saveSettings() {
 }
 
 onMounted(async () => {
-  updateIsMobile()
-  window.addEventListener('resize', updateIsMobile)
   await Promise.all([loadSettings(), loadProviders(), loadLogs()])
   const section = String(route.query.section ?? '')
   if (sections.some((item) => item.key === section)) {
     selectSection(section)
   }
-})
-onUnmounted(() => {
-  window.removeEventListener('resize', updateIsMobile)
 })
 watch(() => route.query.section, (section) => {
   const key = String(section ?? '')
@@ -406,29 +398,38 @@ watch(() => providerForm.providerType, useProviderTemplate)
     <!-- Scrollable content -->
     <div class="min-h-0 flex-1 overflow-y-auto pr-1">
 
-    <div class="grid items-start gap-4 lg:grid-cols-[240px_1fr]">
-      <nav class="glass-panel gap-2 p-2 lg:block lg:min-h-[552px] lg:space-y-1" :class="mobileDetailOpen ? 'hidden lg:block' : 'grid'">
+    <div class="grid items-start gap-4" :class="isDesktopClient ? 'grid-cols-[240px_1fr]' : ''">
+      <nav
+        class="glass-panel gap-2 p-2"
+        :class="[
+          isDesktopClient ? 'block min-h-[552px] space-y-1' : 'grid',
+          isMobileClient && mobileDetailOpen ? 'hidden' : ''
+        ]"
+      >
         <button
           v-for="section in sections"
           :key="section.key"
           class="flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-all duration-300 hover:bg-slate-100/85 hover:text-sky-700 hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-sky-200"
-          :class="selectedKey === section.key ? 'text-slate-600 dark:text-slate-300 lg:bg-white/65 lg:text-sky-700 lg:shadow-sm lg:ring-1 lg:ring-white/70 lg:dark:bg-white/15 lg:dark:text-sky-200' : 'text-slate-600 dark:text-slate-300'"
+          :class="[
+            'text-slate-600 dark:text-slate-300',
+            selectedKey === section.key && isDesktopClient ? 'bg-white/65 text-sky-700 shadow-sm ring-1 ring-white/70 dark:bg-white/15 dark:text-sky-200' : ''
+          ]"
           @click="selectSection(section.key)"
         >
           <span :class="[section.icon, 'size-5']" />
           <span class="flex-1">{{ t(`settings.${section.key}`) }}</span>
-          <span class="icon-[solar--alt-arrow-right-outline] size-4 text-slate-400 lg:hidden" />
+          <span v-if="isMobileClient" class="icon-[solar--alt-arrow-right-outline] size-4 text-slate-400" />
         </button>
       </nav>
 
-      <div class="glass-panel overflow-hidden" :class="mobileDetailOpen ? 'block' : 'hidden lg:block'">
-        <div class="flex items-center gap-2 border-b border-white/40 px-4 py-3 dark:border-white/10 lg:hidden">
+      <div class="glass-panel overflow-hidden" :class="isDesktopClient || mobileDetailOpen ? 'block' : 'hidden'">
+        <div v-if="isMobileClient" class="flex items-center gap-2 border-b border-white/40 px-4 py-3 dark:border-white/10">
           <button class="inline-grid size-9 place-items-center rounded-lg text-slate-500 transition-all duration-300 hover:bg-slate-100 hover:text-sky-700 dark:hover:bg-slate-800 dark:hover:text-sky-200" @click="mobileDetailOpen = false">
             <span class="icon-[solar--alt-arrow-left-outline] size-5" />
           </button>
           <span class="text-sm font-semibold">{{ t(`settings.${selected.key}`) }}</span>
         </div>
-          <div class="hidden border-b border-white/40 px-5 py-4 dark:border-white/10 lg:block">
+          <div v-if="isDesktopClient" class="border-b border-white/40 px-5 py-4 dark:border-white/10">
           <div class="flex items-center gap-3">
             <span :class="[selected.icon, 'size-6 text-sky-500']" />
             <h2 class="text-base font-semibold">{{ t(`settings.${selected.key}`) }}</h2>

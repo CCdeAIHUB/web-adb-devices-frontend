@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue'
+import { inject } from 'vue'
 
 // inject auto-unwraps Ref in Vue 3.5+, so the type is boolean, not Ref<boolean>
 const aiPanelOpen = inject<boolean>('aiPanelOpen', false)
 const toggleAiPanel = inject<() => void>('toggleAiPanel', () => {})
+const isDesktopClient = inject<boolean>('isDesktopClient', false)
 </script>
 
 <template>
@@ -15,7 +16,8 @@ const toggleAiPanel = inject<() => void>('toggleAiPanel', () => {})
       <slot name="actions" />
       <!-- AI toggle button (desktop only, provided by App.vue) -->
       <button
-        class="hidden lg:inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
+        v-if="isDesktopClient"
+        class="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/90 px-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:bg-slate-100 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/60"
         @click="toggleAiPanel"
       >
         <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-4.5']" />

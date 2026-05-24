@@ -1,26 +1,24 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { onMounted, onUnmounted, ref, provide, defineAsyncComponent } from 'vue'
+import { computed, onMounted, onUnmounted, ref, provide, defineAsyncComponent, watch } from 'vue'
 import logoUrl from '@/assets/logo.svg'
+import { useClientMode } from '@/composables/useClientMode'
 
 const AgentPanel = defineAsyncComponent(() => import('@/views/AgentView.vue'))
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const { isDesktopClient, isMobileClient } = useClientMode()
 const toasts = ref<Array<{ id: number; message: string; type: 'success' | 'error' | 'info'; target?: string }>>([])
 const aiPanelOpen = ref(false)
+const currentRouteTitle = computed(() => t(`nav.${String(route.name) || 'dashboard'}`))
 
 // Provide aiPanelOpen to child views so they can add the toggle button
 provide('aiPanelOpen', aiPanelOpen)
 provide('toggleAiPanel', () => { aiPanelOpen.value = !aiPanelOpen.value })
-
-const isMobile = ref(false)
-
-function updateIsMobile() {
-  isMobile.value = typeof window !== 'undefined' ? window.innerWidth < 1024 : false
-}
+provide('isDesktopClient', isDesktopClient)
 
 // Desktop nav - no agent (agent is right panel toggle), no logs/help (moved to settings)
 // icon format: [outline for inactive, bold-duotone for hover, bold-filled for active/selected]
@@ -55,16 +53,17 @@ function openToastTarget(target?: string) {
 
 onMounted(() => {
   window.addEventListener('wad:notify', pushToast)
-  window.addEventListener('resize', updateIsMobile)
-  updateIsMobile()
-  // On desktop, if user navigates to /agent, open the right panel instead
-  if (!isMobile.value && route.name === 'agent') {
+  if (isDesktopClient.value && route.name === 'agent') {
     aiPanelOpen.value = true
   }
 })
 onUnmounted(() => {
   window.removeEventListener('wad:notify', pushToast)
-  window.removeEventListener('resize', updateIsMobile)
+})
+watch([isDesktopClient, () => route.name], ([isDesktop, name]) => {
+  if (isDesktop && name === 'agent') {
+    aiPanelOpen.value = true
+  }
 })
 </script>
 
@@ -72,17 +71,17 @@ onUnmounted(() => {
   <div
     :class="[
       'h-dvh w-screen min-w-0 overflow-hidden text-slate-950 dark:text-slate-100',
-      route.name !== 'login'
+      route.name !== 'login' && isDesktopClient
         ? aiPanelOpen
-          ? 'lg:grid lg:grid-cols-[260px_minmax(0,1fr)_400px]'
-          : 'lg:grid lg:grid-cols-[260px_minmax(0,1fr)]'
+          ? 'grid grid-cols-[260px_minmax(0,1fr)_400px]'
+          : 'grid grid-cols-[260px_minmax(0,1fr)]'
         : ''
     ]"
   >
     <!-- Desktop Sidebar -->
     <aside
-      v-if="route.name !== 'login'"
-      class="hidden h-dvh w-[260px] min-w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85 lg:block"
+      v-if="route.name !== 'login' && isDesktopClient"
+      class="h-dvh w-[260px] min-w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85"
     >
       <div class="mb-8 flex items-center gap-3">
         <img :src="logoUrl" alt="Web ADB Devices" class="size-9 rounded-xl shadow-md shadow-sky-500/20" />
@@ -117,13 +116,20 @@ onUnmounted(() => {
     <!-- Main Content Area -->
     <main :class="route.name === 'login' ? 'min-h-dvh w-full min-w-0' : 'flex h-dvh w-full min-w-0 flex-col overflow-hidden'">
       <!-- Mobile Header -->
-      <header v-if="route.name !== 'login'" class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
+      <header v-if="route.name !== 'login' && isMobileClient" class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80">
         <div class="size-10" aria-hidden="true" />
-        <span class="font-semibold text-slate-800 dark:text-slate-100">{{ $t(`nav.${String(route.name) || 'dashboard'}`) }}</span>
+        <span class="font-semibold text-slate-800 dark:text-slate-100">{{ currentRouteTitle }}</span>
         <div class="size-10" aria-hidden="true" />
       </header>
 
-      <div :class="route.name !== 'login' ? 'min-h-0 w-full min-w-0 flex-1 overflow-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8' : 'w-full min-w-0'">
+      <div
+        :class="route.name !== 'login'
+          ? [
+            'min-h-0 w-full min-w-0 flex-1 overflow-hidden',
+            isDesktopClient ? 'p-8 pb-8' : 'p-4 pb-24 sm:p-6 sm:pb-24'
+          ]
+          : 'w-full min-w-0'"
+      >
         <RouterView />
       </div>
     </main>
@@ -131,8 +137,8 @@ onUnmounted(() => {
     <!-- Right Side AI Panel (Desktop) - Embedded AgentView -->
     <Transition name="panel-slide">
       <aside
-        v-if="aiPanelOpen && route.name !== 'login'"
-        class="hidden h-dvh w-[400px] min-w-[400px] flex-col border-l border-slate-200/60 bg-white/95 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95 lg:flex"
+        v-if="aiPanelOpen && route.name !== 'login' && isDesktopClient"
+        class="flex h-dvh w-[400px] min-w-[400px] flex-col border-l border-slate-200/60 bg-white/95 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95"
       >
         <!-- Panel Header -->
         <div class="flex items-center justify-between border-b border-slate-200/50 px-4 py-3 dark:border-slate-700/30">
@@ -151,8 +157,8 @@ onUnmounted(() => {
 
     <!-- Mobile Bottom Navigation -->
     <nav
-      v-if="route.name !== 'login'"
-      class="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-slate-200/55 bg-white/80 p-2 shadow-lg backdrop-blur-xl dark:border-slate-700/35 dark:bg-slate-950/80 lg:hidden"
+      v-if="route.name !== 'login' && isMobileClient"
+      class="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-slate-200/55 bg-white/80 p-2 shadow-lg backdrop-blur-xl dark:border-slate-700/35 dark:bg-slate-950/80"
     >
       <RouterLink
         v-for="[key, href, icon, iconActive] in mobileNav"
