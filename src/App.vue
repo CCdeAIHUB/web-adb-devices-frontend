@@ -69,11 +69,20 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-screen overflow-hidden text-slate-950 dark:text-slate-100">
+  <div
+    :class="[
+      'h-dvh w-screen min-w-0 overflow-hidden text-slate-950 dark:text-slate-100',
+      route.name !== 'login'
+        ? aiPanelOpen
+          ? 'lg:grid lg:grid-cols-[260px_minmax(0,1fr)_400px]'
+          : 'lg:grid lg:grid-cols-[260px_minmax(0,1fr)]'
+        : ''
+    ]"
+  >
     <!-- Desktop Sidebar -->
     <aside
       v-if="route.name !== 'login'"
-      class="fixed inset-y-0 left-0 z-30 hidden w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85 lg:block"
+      class="hidden h-dvh w-[260px] min-w-[260px] border-r border-slate-200/60 bg-white/80 p-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/85 lg:block"
     >
       <div class="mb-8 flex items-center gap-3">
         <img :src="logoUrl" alt="Web ADB Devices" class="size-9 rounded-xl shadow-md shadow-sky-500/20" />
@@ -106,11 +115,7 @@ onUnmounted(() => {
     </aside>
 
     <!-- Main Content Area -->
-    <main :class="[
-      route.name === 'login' ? '' : 'h-screen overflow-hidden',
-      route.name !== 'login' ? 'lg:ml-[260px]' : '',
-      aiPanelOpen && route.name !== 'login' && !isMobile ? 'lg:pr-[400px]' : ''
-    ]">
+    <main :class="route.name === 'login' ? 'min-h-dvh w-full min-w-0' : 'flex h-dvh w-full min-w-0 flex-col overflow-hidden'">
       <!-- Mobile Header -->
       <header v-if="route.name !== 'login'" class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
         <div class="size-10" aria-hidden="true" />
@@ -118,7 +123,7 @@ onUnmounted(() => {
         <div class="size-10" aria-hidden="true" />
       </header>
 
-      <div :class="route.name !== 'login' ? 'h-[calc(100vh-4rem)] overflow-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:h-screen lg:p-8' : ''">
+      <div :class="route.name !== 'login' ? 'min-h-0 w-full min-w-0 flex-1 overflow-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8' : 'w-full min-w-0'">
         <RouterView />
       </div>
     </main>
@@ -126,8 +131,8 @@ onUnmounted(() => {
     <!-- Right Side AI Panel (Desktop) - Embedded AgentView -->
     <Transition name="panel-slide">
       <aside
-        v-if="aiPanelOpen && route.name !== 'login' && !isMobile"
-        class="fixed right-0 top-0 z-30 hidden h-screen w-[400px] flex-col border-l border-slate-200/60 bg-white/95 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95 lg:flex"
+        v-if="aiPanelOpen && route.name !== 'login'"
+        class="hidden h-dvh w-[400px] min-w-[400px] flex-col border-l border-slate-200/60 bg-white/95 backdrop-blur-xl shadow-xl dark:border-slate-700/40 dark:bg-slate-900/95 lg:flex"
       >
         <!-- Panel Header -->
         <div class="flex items-center justify-between border-b border-slate-200/50 px-4 py-3 dark:border-slate-700/30">
