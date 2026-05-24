@@ -138,7 +138,7 @@ onMounted(load)
 </script>
 
 <template>
-  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
+  <section class="flex h-full min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">任务</h1>
       <p class="mt-1 text-sm text-slate-500">自动化脚本框架采用 Appium 2 + ADB，兼顾界面自动化、ADB 命令、APK 安装和跨设备执行。</p>

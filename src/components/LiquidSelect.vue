@@ -14,6 +14,7 @@ const root = ref<HTMLElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
 const selected = computed(() => props.options.find((item) => item.value === props.modelValue))
+const selectedLabel = computed(() => selected.value?.label ?? (props.modelValue ? props.modelValue : props.placeholder || '请选择'))
 
 function choose(value: string) {
   emit('update:modelValue', value)
@@ -71,7 +72,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="root" class="liquid-select">
     <button type="button" class="liquid-select-trigger" :class="open ? 'is-open' : ''" :disabled="disabled" @click="open = !open">
-      <span class="truncate">{{ selected?.label || placeholder || '请选择' }}</span>
+      <span class="truncate">{{ selectedLabel }}</span>
       <span class="icon-[solar--alt-arrow-down-bold-duotone] size-5 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''" />
     </button>
     <Teleport to="body">

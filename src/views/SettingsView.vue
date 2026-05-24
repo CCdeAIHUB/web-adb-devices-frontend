@@ -206,6 +206,7 @@ const providerSaving = ref(false)
 const providerMessage = ref('')
 const providers = ref<AiProvider[]>([])
 const logs = ref<LogRecord[]>([])
+const editingProviderId = ref('')
 const providerForm = reactive<{
   providerType: string
   displayName: string
@@ -292,6 +293,7 @@ async function loadLogs() {
 }
 
 function useProviderTemplate() {
+  if (editingProviderId.value) return
   const selectedType = modelCatalog[providerForm.providerType as keyof typeof modelCatalog]
   if (!selectedType) return
   providerForm.baseUrl = selectedType.baseUrl
@@ -299,21 +301,43 @@ function useProviderTemplate() {
   providerForm.displayName = selectedType.label
 }
 
-async function addProvider() {
+function resetProviderForm() {
+  editingProviderId.value = ''
+  providerForm.providerType = 'openai'
+  providerForm.displayName = ''
+  providerForm.baseUrl = modelCatalog.openai.baseUrl
+  providerForm.model = modelCatalog.openai.models[0]
+  providerForm.modelVersion = ''
+  providerForm.apiKey = ''
+}
+
+function editProvider(provider: AiProvider) {
+  editingProviderId.value = provider.id
+  providerForm.providerType = provider.providerType
+  providerForm.displayName = provider.displayName
+  providerForm.baseUrl = provider.baseUrl
+  providerForm.model = provider.model
+  providerForm.modelVersion = provider.modelVersion || ''
+  providerForm.apiKey = ''
+  providerMessage.value = '正在修改已有模型；API 密钥留空表示沿用已保存密钥。'
+}
+
+async function saveProvider() {
   providerSaving.value = true
   providerMessage.value = ''
   try {
-    await api<AiProvider>('/api/agent/providers', {
-      method: 'POST',
+    const isEditing = Boolean(editingProviderId.value)
+    await api<AiProvider>(isEditing ? `/api/agent/providers/${editingProviderId.value}` : '/api/agent/providers', {
+      method: isEditing ? 'PUT' : 'POST',
       body: JSON.stringify(providerForm),
     })
-    providerMessage.value = '模型验证通过，已添加到 Agent 可用模型。'
-    providerForm.apiKey = ''
+    providerMessage.value = isEditing ? '模型验证通过，修改已保存。' : '模型验证通过，已添加到 Agent 可用模型。'
+    resetProviderForm()
     await loadProviders()
     await loadSettings()
-    notify('AI 模型已添加并验证通过。', 'success')
+    notify(isEditing ? 'AI 模型已修改并验证通过。' : 'AI 模型已添加并验证通过。', 'success')
   } catch (error) {
-    providerMessage.value = error instanceof ApiError ? error.message : '模型添加失败，请检查配置。'
+    providerMessage.value = error instanceof ApiError ? error.message : '模型保存失败，请检查配置。'
     notify(providerMessage.value, 'error')
   } finally {
     providerSaving.value = false
@@ -368,7 +392,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
 </script>
 
 <template>
-  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
+  <section class="flex h-full min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">设置</h1>
       <template #actions>
@@ -388,7 +412,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           v-for="section in sections"
           :key="section.key"
           class="flex h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-all duration-300 hover:bg-slate-100/85 hover:text-sky-700 hover:shadow-sm dark:hover:bg-white/10 dark:hover:text-sky-200"
-          :class="selectedKey === section.key ? 'bg-white/65 text-sky-700 shadow-sm ring-1 ring-white/70 dark:bg-white/15 dark:text-sky-200' : 'text-slate-600 dark:text-slate-300'"
+          :class="selectedKey === section.key ? 'text-slate-600 dark:text-slate-300 lg:bg-white/65 lg:text-sky-700 lg:shadow-sm lg:ring-1 lg:ring-white/70 lg:dark:bg-white/15 lg:dark:text-sky-200' : 'text-slate-600 dark:text-slate-300'"
           @click="selectSection(section.key)"
         >
           <span :class="[section.icon, 'size-5']" />
@@ -404,7 +428,7 @@ watch(() => providerForm.providerType, useProviderTemplate)
           </button>
           <span class="text-sm font-semibold">{{ t(`settings.${selected.key}`) }}</span>
         </div>
-        <div class="border-b border-white/40 px-5 py-4 dark:border-white/10">
+          <div class="hidden border-b border-white/40 px-5 py-4 dark:border-white/10 lg:block">
           <div class="flex items-center gap-3">
             <span :class="[selected.icon, 'size-6 text-sky-500']" />
             <h2 class="text-base font-semibold">{{ t(`settings.${selected.key}`) }}</h2>
@@ -457,15 +481,16 @@ watch(() => providerForm.providerType, useProviderTemplate)
             </label>
             <label class="grid gap-2 text-sm md:col-span-2">
               <span class="font-medium text-slate-700 dark:text-slate-200">API 密钥</span>
-              <input v-model="providerForm.apiKey" type="password" class="glass-input" placeholder="添加时后端会立即验证" />
+              <input v-model="providerForm.apiKey" type="password" class="glass-input" :placeholder="editingProviderId ? '留空则沿用已保存密钥' : '添加时后端会立即验证'" />
             </label>
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
-            <button class="glass-button glass-button-primary" :disabled="providerSaving" @click="addProvider">
-              <span class="icon-[solar--add-circle-bold-duotone] size-5" />
-              <span>{{ providerSaving ? '验证中' : '添加模型' }}</span>
+            <button class="glass-button glass-button-primary" :disabled="providerSaving" @click="saveProvider">
+              <span :class="[editingProviderId ? 'icon-[solar--diskette-bold-duotone]' : 'icon-[solar--add-circle-bold-duotone]', 'size-5']" />
+              <span>{{ providerSaving ? '验证中' : editingProviderId ? '保存模型' : '添加模型' }}</span>
             </button>
+            <button v-if="editingProviderId" class="glass-button" :disabled="providerSaving" @click="resetProviderForm">取消修改</button>
             <span v-if="providerMessage" class="text-sm" :class="providerMessage.includes('失败') || providerMessage.includes('无法') || providerMessage.includes('无效') ? 'text-rose-600' : 'text-emerald-600'">
               {{ providerMessage }}
             </span>
@@ -497,7 +522,10 @@ watch(() => providerForm.providerType, useProviderTemplate)
                     <span class="rounded-full bg-emerald-100/80 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">已验证</span>
                   </td>
                   <td class="px-4 py-3 text-right">
-                    <button class="rounded-xl p-2 text-rose-600 hover:bg-rose-50/80 dark:hover:bg-rose-950" @click="deleteProvider(provider.id)">
+                    <button class="rounded-xl p-2 text-sky-600 hover:bg-sky-50/80 dark:hover:bg-sky-950" title="编辑模型" @click="editProvider(provider)">
+                      <span class="icon-[solar--pen-new-square-outline] size-5" />
+                    </button>
+                    <button class="rounded-xl p-2 text-rose-600 hover:bg-rose-50/80 dark:hover:bg-rose-950" title="删除模型" @click="deleteProvider(provider.id)">
                       <span class="icon-[solar--trash-bin-trash-outline] size-5" />
                     </button>
                   </td>

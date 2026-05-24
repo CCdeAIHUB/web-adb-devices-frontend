@@ -69,7 +69,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen text-slate-950 dark:text-slate-100">
+  <div class="h-screen overflow-hidden text-slate-950 dark:text-slate-100">
     <!-- Desktop Sidebar -->
     <aside
       v-if="route.name !== 'login'"
@@ -107,20 +107,18 @@ onUnmounted(() => {
 
     <!-- Main Content Area -->
     <main :class="[
-      route.name === 'login' ? '' : 'pb-20 lg:pb-0',
+      route.name === 'login' ? '' : 'h-screen overflow-hidden',
       route.name !== 'login' ? 'lg:ml-[260px]' : '',
       aiPanelOpen && route.name !== 'login' && !isMobile ? 'lg:pr-[400px]' : ''
     ]">
-      <!-- Mobile Header with AI toggle -->
-      <header v-if="route.name !== 'login'" class="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 py-3 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
+      <!-- Mobile Header -->
+      <header v-if="route.name !== 'login'" class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/75 px-4 backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/80 lg:hidden">
         <div class="size-10" aria-hidden="true" />
         <span class="font-semibold text-slate-800 dark:text-slate-100">{{ $t(`nav.${String(route.name) || 'dashboard'}`) }}</span>
-        <button class="flex items-center gap-2 rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800" @click="router.push('/agent')">
-          <span :class="[aiPanelOpen ? 'icon-[solar--close-circle-bold]' : 'icon-[solar--magic-stick-3-bold]', 'size-5 text-slate-600 dark:text-slate-300']" />
-        </button>
+        <div class="size-10" aria-hidden="true" />
       </header>
 
-      <div :class="route.name !== 'login' ? 'p-4 sm:p-6 lg:p-8' : ''">
+      <div :class="route.name !== 'login' ? 'h-[calc(100vh-4rem)] overflow-hidden p-4 pb-24 sm:p-6 sm:pb-24 lg:h-screen lg:p-8' : ''">
         <RouterView />
       </div>
     </main>
@@ -168,7 +166,7 @@ onUnmounted(() => {
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="cursor-pointer rounded-xl px-4 py-3 text-sm shadow-xl backdrop-blur-md transition-colors"
+        class="cursor-pointer overflow-hidden rounded-xl px-4 py-3 text-sm shadow-xl backdrop-blur-md transition-colors"
         :class="[
           toast.type === 'error'
             ? 'bg-rose-50/95 border border-rose-200/70 text-rose-700 dark:bg-rose-950/90 dark:border-rose-800/60 dark:text-rose-200'
@@ -178,7 +176,7 @@ onUnmounted(() => {
         ]"
         @click="openToastTarget(toast.target)"
       >
-        {{ toast.message }}
+        <span class="block truncate">{{ toast.message }}</span>
       </div>
     </TransitionGroup>
   </div>

@@ -362,8 +362,8 @@ if (typeof window !== 'undefined') {
 
 <template>
   <!-- Full page mode (mobile /agent route or desktop non-panel) -->
-  <section v-if="!isPanelMode" class="text-slate-950 dark:text-slate-100">
-    <div class="flex h-[calc(100vh-10rem)] flex-col overflow-hidden pb-4 lg:h-[calc(100vh-8rem)] lg:pb-0">
+  <section v-if="!isPanelMode" class="h-full min-h-0 text-slate-950 dark:text-slate-100">
+    <div class="flex h-full min-h-0 flex-col overflow-hidden">
       <!-- Header with conversation switcher on mobile -->
       <div class="shrink-0 border-b border-white/40 px-4 py-3 sm:px-5 sm:py-4 dark:border-white/10">
         <div class="flex items-center justify-between gap-2">
@@ -580,7 +580,7 @@ if (typeof window !== 'undefined') {
                   <input class="hidden" type="checkbox" v-model="webSearchEnabled" />
                 </label>
                 <label class="glass-button !h-10 !w-10 !p-0 shrink-0 cursor-pointer transition-all duration-300" title="选择文件">
-                  <span class="icon-[solar--gallery-add-bold-duotone] size-5" />
+                  <span class="icon-[solar--paperclip-outline] size-5" />
                   <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
                 </label>
               </div>

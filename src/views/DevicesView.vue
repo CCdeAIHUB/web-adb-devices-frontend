@@ -319,7 +319,7 @@ onUnmounted(stopScanTimer)
 </script>
 
 <template>
-  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
+  <section class="flex h-full min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">设备</h1>
       <p class="mt-1 text-sm text-slate-500">USB ADB、无线配对和 APK 在线状态统一显示在这里。</p>
@@ -623,7 +623,7 @@ onUnmounted(stopScanTimer)
                         :disabled="commandRunning || !environment?.apk.exists"
                         @click="installBundledApk(`adb:${device.serial}`)"
                       >
-                        重新安装伴侣APK
+                        安装伴侣APK
                       </button>
                     </div>
 

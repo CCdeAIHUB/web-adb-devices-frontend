@@ -105,7 +105,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
+  <section class="flex h-full min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <PageHeader>
       <h1 class="text-xl font-semibold">总览</h1>
       <p class="mt-1 text-sm text-slate-500">设备状态、筛选和低频预览集中查看。</p>
@@ -156,11 +156,11 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-else class="grid justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,260px))]">
+    <div v-else class="grid items-start justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,260px))]">
       <RouterLink
         v-for="device in filteredDevices"
         :key="device.deviceId"
-        class="glass-panel group w-full overflow-hidden text-left transition-all duration-300 hover:-translate-y-0.5"
+        class="glass-panel group w-full self-start overflow-hidden text-left transition-all duration-300 hover:-translate-y-0.5"
         :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }"
       >
         <div class="relative w-full overflow-hidden bg-slate-950/90" :style="{ aspectRatio: deviceAspectRatio(device) }">

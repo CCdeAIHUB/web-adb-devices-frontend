@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 export interface DeviceRecord {
   deviceId: string
   temporaryAdbSerial?: string
+  androidId?: string
   model?: string
   remark?: string
   group?: string

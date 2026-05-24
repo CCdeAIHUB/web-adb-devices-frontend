@@ -134,6 +134,7 @@ const message = ref('')
 const installingApk = ref(false)
 const installingApkName = ref('')
 const showPermissionBanner = ref(false)
+const apkBannerDismissed = ref(false)
 const inputText = ref('')
 const pointerDown = ref<{ x: number; y: number; time: number } | null>(null)
 const liveScreen = ref({ width: 1080, height: 2400 })
@@ -157,6 +158,7 @@ const hardware = ref<HardwareInfo | null>(null)
 const hiddenIcons = ref<string[]>([])
 const collapsedTileCount = ref(6)
 const iconTopPadding = ref(0)
+let messageTimer: ReturnType<typeof window.setTimeout> | undefined
 
 const screenSize = computed(() => {
   const w = liveScreen.value.width || device.value?.screenWidth || 1080
@@ -164,9 +166,53 @@ const screenSize = computed(() => {
   return { width: w, height: h }
 })
 const isLandscape = computed(() => screenSize.value.width > screenSize.value.height)
+const hasKnownCompanionApk = computed(() => Boolean(device.value?.apkVersion || bundledApkInstalled.value))
+const companionActionText = computed(() => hasKnownCompanionApk.value ? '重新安装伴侣APK' : '安装伴侣APK')
+const showApkOfflineBanner = computed(() => {
+  if (!canUseAdb.value || canUseApk.value || !device.value) return false
+  if (!hasKnownCompanionApk.value) return true
+  return !apkBannerDismissed.value
+})
 const filteredPackages = computed(() => {
   const keyword = packageFilter.value.trim().toLowerCase()
   return keyword ? packages.value.filter((item) => item.packageName.toLowerCase().includes(keyword)) : packages.value
+})
+
+const hardwareSummary = computed(() => {
+  const info = hardware.value
+  if (!info) {
+    return [
+      ['品牌', device.value?.model?.split(' ')[0] || '-'],
+      ['型号', device.value?.model || '-'],
+      ['分辨率', screenSize.value.width && screenSize.value.height ? `${screenSize.value.width}x${screenSize.value.height}` : '-'],
+      ['系统', device.value?.androidVersion ? `Android ${device.value.androidVersion}` : '-'],
+      ['CPU架构', '-'],
+      ['内存', '-'],
+      ['电池', '-'],
+      ['运行时间', '-'],
+    ]
+  }
+
+  const props = info.properties.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const displaySize = info.display.match(/Physical size:\s*([0-9]+x[0-9]+)/i)?.[1] ?? `${screenSize.value.width}x${screenSize.value.height}`
+  const density = info.display.match(/Physical density:\s*([0-9]+)/i)?.[1]
+  const totalKb = Number(info.memory.match(/MemTotal:\s*(\d+)/i)?.[1] ?? 0)
+  const availableKb = Number(info.memory.match(/MemAvailable:\s*(\d+)/i)?.[1] ?? 0)
+  const batteryLevel = info.battery.match(/level:\s*(\d+)/i)?.[1]
+  const voltage = Number(info.battery.match(/voltage:\s*(\d+)/i)?.[1] ?? 0)
+  const temperature = Number(info.battery.match(/temperature:\s*(\d+)/i)?.[1] ?? 0)
+  const uptime = info.cpu.match(/Load:\s*([^\n]+)/i)?.[1]?.trim()
+
+  return [
+    ['品牌', props[0]?.split(' ')[0] || device.value?.model?.split(' ')[0] || '-'],
+    ['型号', props[0] || device.value?.model || '-'],
+    ['系统', props[1] ? `Android ${props[1]}` : device.value?.androidVersion ? `Android ${device.value.androidVersion}` : '-'],
+    ['CPU架构', props[2] || '-'],
+    ['分辨率', density ? `${displaySize} / ${density} dpi` : displaySize],
+    ['内存', totalKb ? `${formatKb(totalKb)} 总计 / ${availableKb ? `${formatKb(availableKb)} 可用` : '-'}` : '-'],
+    ['电池', batteryLevel ? `${batteryLevel}%${voltage ? `  ${Math.round(voltage / 100) / 10}V` : ''}${temperature ? `  ${Math.round(temperature / 10)}°C` : ''}` : '-'],
+    ['CPU负载', uptime || '-'],
+  ]
 })
 
 const tabs = [
@@ -247,8 +293,19 @@ function controlUrl(path: string) {
   return `/api/devices/${encodeURIComponent(deviceId.value)}/${path}`
 }
 
+function formatKb(value: number) {
+  if (!value) return '-'
+  const gb = value / 1024 / 1024
+  if (gb >= 1) return `${gb.toFixed(1)} GB`
+  return `${Math.round(value / 1024)} MB`
+}
+
+function setMessage(text: string) {
+  message.value = text
+}
+
 function reportError(error: unknown, fallback: string) {
-  message.value = error instanceof ApiError ? error.message : fallback
+  setMessage(error instanceof ApiError ? error.message : fallback)
 }
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info', target?: string) {
@@ -257,7 +314,7 @@ function notify(message: string, type: 'success' | 'error' | 'info' = 'info', ta
 
 function refreshScreenshot() {
   if (!canUseScreenPreview.value) {
-    message.value = '该设备还没有可用的 ADB 或 APK 屏幕预览通道。'
+    setMessage('该设备还没有可用的 ADB 或 APK 屏幕预览通道。')
     return
   }
   const format = streamQuality.value === 'jpeg' ? '&format=jpeg' : ''
@@ -303,9 +360,9 @@ const isInitialLoad = ref(true)
 function onScreenError() {
   screenshotUrl.value = ''
   if (streaming.value) {
-    message.value = '实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+    setMessage('实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线或已开启屏幕预览权限。')
   } else {
-    message.value = '截图加载失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。'
+    setMessage('截图加载失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线或已开启屏幕预览权限。')
   }
   // Only notify on user-triggered refresh, not on initial page load
   if (!isInitialLoad.value) {
@@ -315,7 +372,7 @@ function onScreenError() {
 
 function startStream() {
   if (!canUseScreenPreview.value) {
-    message.value = adbDisabledReason.value || '当前设备无法启动实时屏幕视频。'
+    setMessage(adbDisabledReason.value || '当前设备无法启动实时屏幕视频。')
     return
   }
   streaming.value = true
@@ -441,20 +498,49 @@ async function installBundledApk() {
     const result = await api<AdbCommandResult>(controlUrl('apps/install-bundled'), { method: 'POST', body: JSON.stringify({}) })
     bundledApkInstalled.value = result.success
     message.value = result.success ? (result.stdout?.includes('旧版 APK') ? '检测到旧版 APK，已自动替换并打开手机端引导页。请在手机上确认权限。' : '内置 APK 已安装，并已打开手机端引导页。请在手机上开启所需权限。') : result.stderr || result.stdout || '内置 APK 安装失败。'
-    notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert'); await loadPackages()
+    notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert')
+    await devices.load()
+    if (activeTab.value === 'apps') await loadPackages()
   } catch (error) { reportError(error, '内置 APK 安装请求失败。'); notify(message.value, 'error', '/help#install-apk') }
   finally { busy.value = false; installingApk.value = false; installingApkName.value = '' }
 }
 
+async function requestScreenPreviewPermission() {
+  busy.value = true
+  try {
+    const result = await api<AdbCommandResult>(controlUrl('apps/start-screen-preview'), { method: 'POST', body: JSON.stringify({}) })
+    message.value = result.success ? '已在手机上打开屏幕预览授权页，请确认系统弹窗。' : result.stderr || result.stdout || '屏幕预览授权页启动失败。'
+    notify(message.value, result.success ? 'success' : 'error')
+  } catch (error) {
+    reportError(error, '屏幕预览授权页启动失败。')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function loadFiles(path = currentPath.value) {
   busy.value = true
-  try { const r = await api<{ path: string; entries: FileEntry[] }>(controlUrl(`files?path=${encodeURIComponent(path)}`)); currentPath.value = r.path; fileEntries.value = r.entries }
+  try {
+    const r = await api<{ path: string; entries: FileEntry[]; success?: boolean; stderr?: string }>(controlUrl(`files?path=${encodeURIComponent(path)}`))
+    currentPath.value = r.path
+    fileEntries.value = r.entries
+    if (r.success === false) {
+      message.value = r.stderr || 'ADB 无法读取该路径。Android 未 root 时，/data 等目录通常会被系统拒绝。'
+    }
+  }
   catch (error) { reportError(error, '文件列表读取失败。') }
   finally { busy.value = false }
 }
 function enterFile(entry: FileEntry) { if (entry.type !== 'directory') return; loadFiles(`${currentPath.value.endsWith('/') ? currentPath.value.slice(0, -1) : currentPath.value}/${entry.name}`) }
-function parentPath() { if (currentPath.value === '/sdcard') return; const n = currentPath.value.replace(/\/$/, '').split('/').slice(0, -1).join('/') || '/sdcard'; loadFiles(n.startsWith('/sdcard') ? n : '/sdcard') }
-function downloadFile(entry: FileEntry) { const b = currentPath.value.endsWith('/') ? currentPath.value : `${currentPath.value}/`; window.open(controlUrl(`files/download?path=${encodeURIComponent(`${b}/${entry.name}`)}`), '_blank') }
+function parentPath() {
+  if (currentPath.value === '/') return
+  const parent = currentPath.value.replace(/\/$/, '').split('/').slice(0, -1).join('/') || '/'
+  loadFiles(parent)
+}
+function downloadFile(entry: FileEntry) {
+  const base = currentPath.value === '/' ? '' : currentPath.value.replace(/\/$/, '')
+  window.open(controlUrl(`files/download?path=${encodeURIComponent(`${base}/${entry.name}`)}`), '_blank')
+}
 
 async function uploadFile(event: Event) {
   const input = event.target as HTMLInputElement; const f = input.files?.[0]; if (!f) return
@@ -464,6 +550,37 @@ async function uploadFile(event: Event) {
 }
 
 async function loadHardware() { busy.value = true; try { hardware.value = await api<HardwareInfo>(controlUrl('hardware')) } catch (error) { reportError(error, '硬件信息读取失败。') } finally { busy.value = false } }
+function exportHardwareDetails() {
+  if (!hardware.value) return
+  const body = [
+    `设备：${device.value?.model || deviceId.value}`,
+    `时间：${new Date().toLocaleString()}`,
+    '',
+    '概览',
+    ...hardwareSummary.value.map(([label, value]) => `${label}: ${value}`),
+    '',
+    'CPU',
+    hardware.value.cpu,
+    '',
+    '内存',
+    hardware.value.memory,
+    '',
+    '电池',
+    hardware.value.battery,
+    '',
+    '显示',
+    hardware.value.display,
+    '',
+    '属性',
+    hardware.value.properties,
+  ].join('\n')
+  const url = URL.createObjectURL(new Blob([body], { type: 'text/plain;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${device.value?.model || deviceId.value}-hardware.txt`
+  link.click()
+  URL.revokeObjectURL(url)
+}
 async function saveStatusIcons() { await postSimple('system-ui/status-icons', { hiddenIcons: hiddenIcons.value }, '状态栏图标设置已发送。') }
 async function saveQuickSettings() { await postSimple('system-ui/quick-settings', { collapsedTileCount: collapsedTileCount.value, iconTopPadding: iconTopPadding.value }, '快捷设置布局命令已发送。') }
 async function powerAction(action: string) { await postSimple('power', { action }, '电源命令已发送。') }
@@ -515,7 +632,13 @@ async function autoDetectAndInstallApk() {
   }
 }
 
-onUnmounted(() => { stopTimer(); stopPermissionTimer(); stopDeviceStatePolling(); document.removeEventListener('fullscreenchange', handleFullscreenChange) })
+onUnmounted(() => {
+  stopTimer()
+  stopPermissionTimer()
+  stopDeviceStatePolling()
+  if (messageTimer !== undefined) window.clearTimeout(messageTimer)
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
+})
 
 let deviceStateTimer: ReturnType<typeof window.setInterval> | undefined
 function startDeviceStatePolling() {
@@ -537,6 +660,28 @@ watch(() => canUseScreenPreview.value, (ready) => {
   if (!ready && streaming.value) {
     stopStream()
   }
+})
+
+watch(message, (value) => {
+  if (messageTimer !== undefined) {
+    window.clearTimeout(messageTimer)
+    messageTimer = undefined
+  }
+  if (value) {
+    messageTimer = window.setTimeout(() => {
+      message.value = ''
+    }, 3600)
+  }
+})
+
+watch(activeTab, (tab) => {
+  if (tab === 'hardware' && canUseAdb.value && !hardware.value) {
+    loadHardware()
+  }
+})
+
+watch(() => device.value?.deviceId, () => {
+  apkBannerDismissed.value = false
 })
 
 let permissionTimer: ReturnType<typeof window.setInterval> | undefined
@@ -576,7 +721,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 </script>
 
 <template>
-  <section class="flex h-[calc(100vh-8rem)] min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
+  <section class="flex h-full min-h-0 flex-col overflow-hidden text-slate-950 dark:text-slate-100">
     <!-- Fixed header area -->
     <div class="shrink-0">
       <PageHeader>
@@ -592,6 +737,10 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <span>{{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ screenSize.width }} x {{ screenSize.height }}</span>
         </div>
         <template #actions>
+          <button class="glass-button" :disabled="busy || !canUseAdb" @click="installBundledApk">
+            <span class="icon-[solar--box-bold-duotone] size-5" />
+            <span>{{ companionActionText }}</span>
+          </button>
         </template>
       </PageHeader>
 
@@ -619,7 +768,9 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 
     <!-- Control feedback message - fixed position to avoid layout shift -->
     <Transition name="slide-down">
-      <div v-if="message" class="fixed top-16 left-1/2 z-40 -translate-x-1/2 rounded-xl px-5 py-2.5 text-sm shadow-lg backdrop-blur-md border border-slate-200/60 bg-white/95 dark:border-slate-700/50 dark:bg-slate-900/95 dark:text-slate-200">{{ message }}</div>
+      <div v-if="message" class="fixed left-1/2 top-16 z-40 max-w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-slate-200/60 bg-white/95 px-5 py-2.5 text-center text-sm shadow-lg backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-900/95 dark:text-slate-200">
+        <span class="block truncate">{{ message }}</span>
+      </div>
     </Transition>
 
     <!-- Install progress banner -->
@@ -651,9 +802,12 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
       <div class="min-w-0"><p class="font-medium">APK 已连接，但还需要开启权限：{{ missingPermissionNames.join('、') || '等待手机端上报' }}</p><div class="mt-2 flex flex-wrap gap-2"><span v-for="item in permissionRows" :key="item.key" class="rounded-full px-2.5 py-1 text-xs font-medium" :class="item.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'">{{ item.label }}：{{ item.enabled ? '已开启' : '未开启' }}</span></div></div>
       <RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink>
     </div>
-    <div v-else-if="canUseAdb && !device?.apkVersion" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-      <span>{{ bundledApkInstalled ? 'APK 已安装，下一步请在手机上开启无障碍服务、输入法、通知和后台运行权限。' : 'APK 通道尚未在线：如果尚未安装，请安装伴侣APK；如果已经安装，请在手机上授予所需权限。' }}</span>
-      <div class="flex flex-wrap gap-2"><button class="glass-button glass-button-primary" :disabled="busy" @click="installBundledApk">重新安装伴侣APK</button><RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink></div>
+    <div v-else-if="showApkOfflineBanner" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      <span>{{ hasKnownCompanionApk ? 'APK 已安装，但伴侣通道尚未在线。可以在手机上打开伴侣 APK，或重新安装后由桌面端自动唤起。' : '未检测到伴侣 APK，请先安装伴侣 APK。' }}</span>
+      <div class="flex flex-wrap gap-2">
+        <button v-if="hasKnownCompanionApk" class="glass-button" @click="apkBannerDismissed = true">关闭提示</button>
+        <RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink>
+      </div>
     </div>
 
     <!-- Control Tab -->
@@ -670,29 +824,33 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <div class="flex flex-wrap items-center gap-2">
             <span class="mr-1 text-xs font-semibold text-slate-300">截图流</span>
             <!-- Transport mode selector -->
-            <div class="flex h-10 rounded-lg border border-white/10 bg-white/5 p-1 text-xs">
-              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="transportMode === 'tcp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="transportMode = 'tcp'">TCP</button>
-              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="transportMode === 'udp' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="transportMode = 'udp'">UDP</button>
+            <div class="stream-control stream-segment">
+              <button :class="transportMode === 'tcp' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="transportMode = 'tcp'">TCP</button>
+              <button :class="transportMode === 'udp' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="transportMode = 'udp'">UDP</button>
             </div>
             <!-- Stream config -->
-            <LiquidSelect v-model="streamInterval" class="min-w-28 !h-10 !border-white/10 !bg-white/5 !py-1 !text-xs" :options="streamIntervalOptions" />
-            <div class="flex h-10 rounded-lg border border-white/10 bg-white/5 p-1 text-xs">
-              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="streamQuality === 'png' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
-              <button class="rounded-md px-2.5 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50" :class="streamQuality === 'jpeg' ? 'bg-sky-500/25 text-sky-300' : 'text-slate-400 hover:text-slate-200'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
+            <LiquidSelect v-model="streamInterval" class="stream-select min-w-28" :options="streamIntervalOptions" />
+            <div class="stream-control stream-segment">
+              <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
+              <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
-            <button class="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-200 transition-all duration-300 hover:border-sky-400/60 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!canUseScreenPreview" @click="refreshScreenshot">
+            <button class="stream-control stream-button" :disabled="!canUseScreenPreview" @click="refreshScreenshot">
               <span class="icon-[solar--refresh-bold-duotone] size-5" />
               <span>刷新屏幕</span>
             </button>
-            <button class="inline-flex h-10 items-center gap-2 rounded-lg bg-sky-500 px-3 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400" :disabled="!canUseScreenPreview" @click="streaming ? stopStream() : startStream()">
+            <button class="stream-control stream-primary" :disabled="!canUseScreenPreview" @click="streaming ? stopStream() : startStream()">
               <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
               <span>{{ streaming ? '停止实时屏幕视频' : '实时屏幕视频' }}</span>
             </button>
-            <label class="glass-toggle inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 text-sm backdrop-blur-sm transition-all duration-300 hover:bg-white/10" :class="controlEnabled ? 'border-sky-400/60 bg-sky-500/15' : ''">
+            <button v-if="canUseAdb && hasKnownCompanionApk && !canUseApk" class="stream-control stream-button" :disabled="busy" @click="requestScreenPreviewPermission">
+              <span class="icon-[solar--screen-share-bold-duotone] size-5" />
+              <span>授权预览</span>
+            </button>
+            <label class="stream-control stream-toggle" :class="controlEnabled ? 'stream-toggle-on' : ''">
               <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />
               <span :class="controlEnabled ? 'text-sky-300' : 'text-slate-300'">控制设备</span>
             </label>
-            <button class="inline-grid h-10 w-10 place-items-center rounded-lg text-slate-400 transition-all duration-300 hover:bg-white/10 hover:text-sky-300" title="全屏" @click="toggleFullscreen">
+            <button class="stream-control stream-icon-button" title="全屏" @click="toggleFullscreen">
               <span :class="[isFullscreen ? 'icon-[solar--quit-full-screen-bold]' : 'icon-[solar--full-screen-bold]', 'size-4']" />
             </button>
           </div>
@@ -771,7 +929,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <input v-model="packageFilter" class="h-10 min-w-64 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all focus:border-sky-400 dark:border-slate-700 dark:bg-slate-950" placeholder="搜索包名" />
           <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="loadPackages">列出软件包</button>
           <label class="inline-flex h-10 cursor-pointer items-center rounded-md border border-slate-300 px-4 text-sm transition-all hover:border-sky-300 dark:border-slate-700">安装 APK<input class="hidden" type="file" accept=".apk,application/vnd.android.package-archive" @change="installApk" /></label>
-          <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="installBundledApk">重新安装伴侣APK</button>
+          <button class="h-10 rounded-md bg-sky-500 px-4 text-sm text-white transition-all duration-200 disabled:opacity-60" :disabled="busy || !canUseAdb" @click="installBundledApk">{{ companionActionText }}</button>
         </div>
         <div class="max-h-[620px] overflow-auto">
           <button v-for="item in filteredPackages" :key="item.packageName" class="grid w-full gap-1 border-t border-slate-100 px-2 py-3 text-left text-sm transition-all hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800" :class="selectedPackage === item.packageName ? 'bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : ''" @click="selectedPackage = item.packageName">
@@ -809,13 +967,23 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
     </div>
 
     <!-- Hardware Tab -->
-    <div v-else-if="activeTab === 'hardware'" class="grid gap-3">
-      <button class="hw-refresh-btn" :disabled="busy || !canUseAdb" @click="loadHardware"><span class="icon-[solar--refresh-bold-duotone] size-5" /><span>检测硬件信息</span></button>
-      <div class="grid gap-3 lg:grid-cols-2">
-        <pre class="min-h-56 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">CPU\n{{ hardware?.cpu || '等待检测。' }}</pre>
-        <pre class="min-h-56 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">内存\n{{ hardware?.memory || '等待检测。' }}</pre>
-        <pre class="min-h-56 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">电池\n{{ hardware?.battery || '等待检测。' }}</pre>
-        <pre class="min-h-56 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">显示/属性\n{{ [hardware?.display, hardware?.properties].filter(Boolean).join('\n') || '等待检测。' }}</pre>
+    <div v-else-if="activeTab === 'hardware'" class="grid gap-4">
+      <div class="flex flex-wrap gap-2">
+        <button class="hw-refresh-btn" :disabled="busy || !canUseAdb" @click="loadHardware"><span class="icon-[solar--refresh-bold-duotone] size-5" /><span>刷新</span></button>
+        <button class="hw-export-btn" :disabled="!hardware" @click="exportHardwareDetails"><span class="icon-[solar--download-minimalistic-outline] size-5" /><span>详细导出</span></button>
+      </div>
+      <div class="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 class="mb-3 text-base font-semibold">设备信息：{{ device?.model || deviceId }}</h2>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div v-for="[label, value] in hardwareSummary" :key="label" class="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-950/50">
+            <div class="text-xs text-slate-500">{{ label }}</div>
+            <div class="mt-1 break-words font-semibold text-slate-800 dark:text-slate-100">{{ value }}</div>
+          </div>
+        </div>
+      </div>
+      <div v-if="hardware" class="grid gap-3 lg:grid-cols-2">
+        <pre class="max-h-64 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">CPU\n{{ hardware.cpu }}</pre>
+        <pre class="max-h-64 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">内存\n{{ hardware.memory }}</pre>
       </div>
     </div>
 
@@ -856,6 +1024,22 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 .dark .tab-btn-inactive { color: #94a3b8; }
 .dark .tab-btn-inactive:not(:disabled):hover { background-color: rgba(30,41,59,.55); color: #e2e8f0; }
 
+.stream-control { display: inline-flex; height: 2.5rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.06); padding: 0 .75rem; font-size: .875rem; color: #dbeafe; transition: all 180ms ease; }
+.stream-control:disabled, .stream-control :disabled { cursor: not-allowed; opacity: .48; }
+.stream-button:hover:not(:disabled), .stream-icon-button:hover:not(:disabled), .stream-toggle:hover { border-color: rgba(56,189,248,.55); background: rgba(14,165,233,.14); color: #bae6fd; }
+.stream-primary { border-color: rgba(14,165,233,.8); background: #0ea5e9; color: white; font-weight: 600; }
+.stream-primary:hover:not(:disabled) { background: #38bdf8; }
+.stream-primary:disabled { border-color: rgba(51,65,85,.8); background: rgba(51,65,85,.7); color: #94a3b8; }
+.stream-icon-button { width: 2.5rem; padding: 0; color: #cbd5e1; }
+.stream-toggle { cursor: pointer; border-radius: .5rem; padding: 0 .75rem; }
+.stream-toggle-on { border-color: rgba(56,189,248,.55); background: rgba(14,165,233,.16); }
+.stream-segment { gap: .25rem; padding: .25rem; font-size: .75rem; }
+.stream-segment button { height: 2rem; border-radius: .375rem; padding: 0 .625rem; transition: all 180ms ease; }
+.stream-segment-active { background: rgba(14,165,233,.28); color: #7dd3fc; }
+.stream-segment-idle { color: #94a3b8; }
+.stream-segment-idle:hover:not(:disabled) { color: #e2e8f0; }
+.stream-select :deep(button) { height: 2.5rem; border-radius: .5rem; border-color: rgba(255,255,255,.12); background: rgba(255,255,255,.06); color: #dbeafe; }
+
 /* Quick key button in sidebar */
 .quick-key-btn { display: inline-flex; height: 2.75rem; align-items: center; justify-content: center; gap: 0.375rem; border-radius: 0.5rem; border: 1px solid rgba(226,232,240,.8); background: white; font-size: 0.8125rem; color: #334155; transition: all 160ms ease; }
 .quick-key-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.7); background: #f0f9ff; color: #0369a1; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(14,165,233,.12); }
@@ -888,6 +1072,11 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
 /* Hardware & Power buttons */
 .hw-refresh-btn { display: inline-flex; height: 2.5rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; background: #0ea5e9; padding: 0 1rem; font-size: 0.875rem; font-weight: 500; color: white; transition: all 160ms ease; }
 .hw-refresh-btn:hover:not(:disabled) { background: #0284c7; box-shadow: 0 3px 10px rgba(14,165,233,.28); }
+.hw-export-btn { display: inline-flex; height: 2.5rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(203,213,225,.8); background: white; padding: 0 1rem; font-size: 0.875rem; font-weight: 500; color: #334155; transition: all 160ms ease; }
+.hw-export-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.8); background: #f0f9ff; color: #0369a1; }
+.hw-export-btn:disabled { opacity: .5; }
+.dark .hw-export-btn { border-color: rgba(51,65,85,.7); background: #1e293b; color: #cbd5e1; }
+.dark .hw-export-btn:hover:not(:disabled) { border-color: rgba(56,189,248,.45); background: #0f172a; color: #38bdf8; }
 .power-action-btn { display: inline-flex; height: 4rem; align-items: center; justify-content: center; gap: 0.5rem; border-radius: 0.75rem; border: 1px solid rgba(226,232,240,.8); background: white; font-size: 0.875rem; font-weight: 500; transition: all 160ms ease; }
 .power-action-btn:hover:not(:disabled) { border-color: rgba(125,211,252,.65); color: #0369a1; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.06); }
 .power-action-btn:disabled { opacity: .5; }
