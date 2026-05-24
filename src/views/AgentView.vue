@@ -375,7 +375,7 @@ if (typeof window !== 'undefined') {
                 :class="conversationDropdownOpen ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'"
                 @click.stop="conversationDropdownOpen = !conversationDropdownOpen"
               >
-                <span class="icon-[solar--chat-round-dots-bold size-5 text-sky-400 shrink-0" />
+                <span class="icon-[solar--chat-round-dots-bold] size-5 text-sky-400 shrink-0" />
                 <span class="truncate flex-1 text-left">{{ activeConversation?.title || 'AI 助手' }}</span>
                 <span :class="[conversationDropdownOpen ? 'icon-[solar--alt-arrow-up-linear]' : 'icon-[solar--alt-arrow-down-linear]', 'size-4 text-slate-400 shrink-0']" />
               </button>
@@ -390,7 +390,7 @@ if (typeof window !== 'undefined') {
                       class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-900/20"
                       @click="createConversation()"
                     >
-                      <span class="icon-[solar--add-circle-bold size-5" />
+                      <span class="icon-[solar--add-circle-bold] size-5" />
                       <span>新对话</span>
                     </button>
                   </div>
@@ -403,7 +403,7 @@ if (typeof window !== 'undefined') {
                       :class="conv.id === activeConversationId ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' : 'hover:bg-slate-50 dark:hover:bg-slate-800'"
                       @click="switchConversation(conv.id)"
                     >
-                      <span v-if="conv.pinned" class="icon-[solar--pin-bold size-4 text-sky-500 shrink-0" />
+                      <span v-if="conv.pinned" class="icon-[solar--pin-bold] size-4 text-sky-500 shrink-0" />
                       <span class="min-w-0 flex-1 truncate">{{ conv.title }}</span>
                       <span class="shrink-0 text-xs text-slate-400">{{ new Date(conv.updatedAt).toLocaleDateString() }}</span>
                     </button>
@@ -423,14 +423,14 @@ if (typeof window !== 'undefined') {
                 <span :class="[activeConversation.pinned ? 'icon-[solar--pin-bold] text-sky-500' : 'icon-[solar--pin-outline]', 'size-4']" />
               </button>
               <button v-if="activeConversation" class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" title="重命名" @click="renameConversation(activeConversation)">
-                <span class="icon-[solar--pen-new-square-outline size-4" />
+                <span class="icon-[solar--pen-new-square-outline] size-4" />
               </button>
               <button class="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" title="新对话" @click="createConversation()">
-                <span class="icon-[solar--add-circle-outline size-4" />
+                <span class="icon-[solar--add-circle-outline] size-4" />
               </button>
             </template>
             <RouterLink class="glass-button shrink-0 !px-2.5 !py-1.5" :to="{ name: 'settings', query: { section: 'agent' } }">
-              <span class="icon-[solar--settings-outline size-4" />
+              <span class="icon-[solar--settings-outline] size-4" />
             </RouterLink>
           </div>
         </div>
@@ -471,10 +471,10 @@ if (typeof window !== 'undefined') {
             :key="`${file.name}-${file.size}`"
             class="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
           >
-            <span class="icon-[solar--document-text-bold size-3" />
+            <span class="icon-[solar--document-text-bold] size-3" />
             <span class="max-w-[120px] truncate">{{ file.name }}</span>
             <button class="ml-0.5 rounded-full p-0.5 hover:bg-sky-200 dark:hover:bg-sky-700" @click="attachments.splice(idx, 1)">
-              <span class="icon-[solar--close-circle-bold size-3" />
+              <span class="icon-[solar--close-circle-bold] size-3" />
             </button>
           </span>
         </div>
@@ -490,8 +490,8 @@ if (typeof window !== 'undefined') {
 
           <div class="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
             <div class="flex flex-wrap gap-2">
-              <LiquidSelect v-model="selectedProvider" class="min-w-52" :options="providerOptions" placeholder="选择模型" />
-              <LiquidSelect v-model="permissionMode" class="min-w-52" :options="permissionOptions" />
+              <LiquidSelect v-model="selectedProvider" class="min-w-40" :options="providerOptions" placeholder="选择模型" />
+              <LiquidSelect v-model="permissionMode" class="min-w-40" :options="permissionOptions" />
               <div class="relative">
                 <button class="device-menu-trigger glass-button" @click.stop="deviceMenuOpen = !deviceMenuOpen">
                   <span class="icon-[solar--devices-outline] size-5" />
@@ -538,7 +538,7 @@ if (typeof window !== 'undefined') {
             <LiquidSelect v-model="selectedProvider" class="min-w-0" :options="providerOptions" placeholder="选择模型" />
             <div class="relative">
               <button class="device-menu-trigger glass-button !px-3 min-w-[80px]" @click.stop="deviceMenuOpen = !deviceMenuOpen">
-                <span class="icon-[solar--devices-outline size-5" />
+                <span class="icon-[solar--devices-outline] size-5" />
                 <span class="text-xs">{{ selectedDevices.length > 0 ? `${selectedDevices.length}台` : '设备' }}</span>
               </button>
               <div v-if="deviceMenuOpen" class="device-menu-popup glass-menu absolute bottom-12 right-0 left-0 z-20 grid max-h-60 gap-2 overflow-auto p-3">
@@ -560,13 +560,13 @@ if (typeof window !== 'undefined') {
           </div>
 
           <!-- Input row with icon buttons -->
-          <div class="flex items-end gap-2">
+          <div class="flex items-start gap-2">
             <!-- Voice button -->
-            <button class="glass-button !p-2.5 shrink-0 transition-colors" :class="voiceListening ? '!bg-red-500/20 !border-red-400/50' : ''" :title="voiceSupported ? (voiceListening ? '停止录音' : '语音输入') : '浏览器不支持语音输入'" @click="toggleVoice">
+            <button class="glass-button !h-10 !w-10 !p-0 shrink-0 transition-colors" :class="voiceListening ? '!bg-red-500/20 !border-red-400/50' : ''" :title="voiceSupported ? (voiceListening ? '停止录音' : '语音输入') : '浏览器不支持语音输入'" @click="toggleVoice">
               <span v-if="voiceListening" class="icon-[solar--stop-circle-bold-duotone] size-5 text-red-400 animate-pulse" />
               <span v-else class="icon-[solar--microphone-3-bold-duotone] size-5" :class="!voiceSupported ? 'opacity-40' : ''" />
             </button>
-            
+
             <!-- Text input -->
             <textarea
               v-model="prompt"
@@ -575,22 +575,28 @@ if (typeof window !== 'undefined') {
               rows="1"
               @keydown.ctrl.enter.prevent="sendMessage"
             />
-            
+
+            <!-- Web search toggle -->
+            <label class="glass-button !h-10 !w-10 !p-0 shrink-0 cursor-pointer transition-colors" :class="webSearchEnabled ? '!bg-sky-50 !border-sky-300 dark:!bg-sky-900/30 dark:!border-sky-700' : ''" title="联网搜索">
+              <span class="icon-[solar--global-outline] size-5" :class="webSearchEnabled ? 'text-sky-500' : ''" />
+              <input class="hidden" type="checkbox" v-model="webSearchEnabled" />
+            </label>
+
             <!-- File button -->
-            <label class="glass-button !p-2.5 shrink-0 cursor-pointer" title="选择文件">
-              <span class="icon-[solar--gallery-add-bold-duotone size-5" />
+            <label class="glass-button !h-10 !w-10 !p-0 shrink-0 cursor-pointer" title="选择文件">
+              <span class="icon-[solar--gallery-add-bold-duotone] size-5" />
               <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
             </label>
-            
+
             <!-- Send button (only when text exists) -->
             <Transition name="slide-left">
               <button
                 v-if="prompt.trim()"
-                class="glass-button glass-button-primary !p-2.5 shrink-0"
+                class="glass-button glass-button-primary !h-10 !w-10 !p-0 shrink-0"
                 :disabled="running"
                 @click="sendMessage"
               >
-                <span class="icon-[solar--plain-2-bold size-5" />
+                <span class="icon-[solar--plain-2-bold] size-5" />
               </button>
             </Transition>
           </div>
@@ -634,7 +640,7 @@ if (typeof window !== 'undefined') {
         >
           <span class="max-w-[100px] truncate">{{ file.name }}</span>
           <button class="ml-0.5 rounded-full p-0.5 hover:bg-sky-200 dark:hover:bg-sky-700" @click="attachments.splice(idx, 1)">
-            <span class="icon-[solar--close-circle-bold size-3" />
+            <span class="icon-[solar--close-circle-bold] size-3" />
           </button>
         </span>
       </div>
@@ -646,39 +652,44 @@ if (typeof window !== 'undefined') {
         class="w-full resize-none rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-sm outline-none placeholder:text-slate-400 transition-all focus:border-sky-400 focus:ring-1 focus:ring-sky-400/20 dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-200 dark:placeholder:text-slate-500"
         @keydown.ctrl.enter.prevent="sendMessage"
       />
-      <div class="mt-2 flex items-center justify-between gap-2">
-        <LiquidSelect v-model="selectedProvider" class="min-w-36" :options="providerOptions" placeholder="选择模型" />
-        <div class="flex items-center gap-1.5">
-          <!-- Device select button -->
-          <div class="relative">
-            <button class="device-menu-trigger inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" :class="selectedDevices.length > 0 ? 'text-sky-600 dark:text-sky-400' : ''" title="选择设备" @click.stop="deviceMenuOpen = !deviceMenuOpen">
-              <span class="icon-[solar--devices-outline] size-4" />
-              <span class="text-xs">{{ selectedDevices.length > 0 ? `${selectedDevices.length}台设备` : '设备' }}</span>
-            </button>
-            <div v-if="deviceMenuOpen" class="device-menu-popup glass-menu absolute bottom-10 right-0 z-20 grid max-h-60 w-64 gap-1 overflow-auto p-2">
-              <label v-for="device in devices.devices" :key="device.deviceId" class="flex cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 text-xs hover:bg-white/40 dark:hover:bg-white/10">
-                <input type="checkbox" class="glass-checkbox mt-0.5" :checked="selectedDevices.includes(device.deviceId)" @change="toggleDevice(device.deviceId)" />
-                <span class="min-w-0">
-                  <span class="block truncate font-medium">{{ device.model || device.deviceId }}</span>
-                  <span class="block truncate text-slate-500">{{ device.displayState }}</span>
-                </span>
-              </label>
-              <div v-if="devices.devices.length === 0" class="p-3 text-sm text-slate-500">暂无设备。</div>
+      <div class="mt-2 space-y-2">
+        <!-- Row 1: Model + Permission -->
+        <div class="flex gap-2">
+          <LiquidSelect v-model="selectedProvider" class="min-w-0 flex-1" :options="providerOptions" placeholder="选择模型" />
+          <LiquidSelect v-model="permissionMode" class="min-w-[100px]" :options="permissionOptions" />
+        </div>
+        <!-- Row 2: Tool buttons + Send -->
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <!-- Device select button -->
+            <div class="relative">
+              <button class="device-menu-trigger inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors" :class="selectedDevices.length > 0 ? 'text-sky-600 dark:text-sky-400' : ''" title="选择设备" @click.stop="deviceMenuOpen = !deviceMenuOpen">
+                <span class="icon-[solar--devices-outline] size-4" />
+                <span class="text-xs">{{ selectedDevices.length > 0 ? `${selectedDevices.length}台` : '设备' }}</span>
+              </button>
+              <div v-if="deviceMenuOpen" class="device-menu-popup glass-menu absolute bottom-10 right-0 z-20 grid max-h-60 w-64 gap-1 overflow-auto p-2">
+                <label v-for="device in devices.devices" :key="device.deviceId" class="flex cursor-pointer items-start gap-2 rounded-xl px-2 py-1.5 text-xs hover:bg-white/40 dark:hover:bg-white/10">
+                  <input type="checkbox" class="glass-checkbox mt-0.5" :checked="selectedDevices.includes(device.deviceId)" @change="toggleDevice(device.deviceId)" />
+                  <span class="min-w-0">
+                    <span class="block truncate font-medium">{{ device.model || device.deviceId }}</span>
+                    <span class="block truncate text-slate-500">{{ device.displayState }}</span>
+                  </span>
+                </label>
+                <div v-if="devices.devices.length === 0" class="p-3 text-sm text-slate-500">暂无设备。</div>
+              </div>
             </div>
+            <!-- File attach button -->
+            <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" title="添加文件">
+              <span class="icon-[solar--paperclip-outline] size-4" />
+              <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
+            </label>
+            <!-- Web search toggle -->
+            <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" :class="webSearchEnabled ? 'text-sky-600 dark:text-sky-400' : ''">
+              <input type="checkbox" class="size-3 accent-sky-500" v-model="webSearchEnabled" />
+              <span class="icon-[solar--global-outline] size-3.5" />
+              <span>联网</span>
+            </label>
           </div>
-          <!-- File attach button -->
-          <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" title="添加文件">
-            <span class="icon-[solar--paperclip-outline] size-4" />
-            <input class="hidden" type="file" multiple accept="image/*,audio/*,.txt,.json,.csv,.log,.apk" @change="attachFiles" />
-          </label>
-          <!-- Web search toggle -->
-          <label class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer" :class="webSearchEnabled ? 'text-sky-600 dark:text-sky-400' : ''">
-            <input type="checkbox" class="size-3 accent-sky-500" v-model="webSearchEnabled" />
-            <span class="icon-[solar--global-outline] size-3.5" />
-            <span>联网</span>
-          </label>
-          <!-- Permission mode -->
-          <LiquidSelect v-model="permissionMode" class="min-w-24 !text-xs" :options="permissionOptions" />
           <!-- Send button -->
           <button
             class="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 px-3 py-2 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50 transition-colors"

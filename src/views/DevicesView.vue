@@ -369,7 +369,69 @@ onUnmounted(stopScanTimer)
       </div>
     </div>
 
-    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <!-- Mobile card layout -->
+    <div class="lg:hidden">
+      <div v-if="filteredDevices.length === 0" class="rounded-lg border border-slate-200 bg-white p-10 text-center text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        <button class="text-sky-600 hover:underline dark:text-sky-300" @click="openConnect('usb')">{{ devices.devices.length === 0 ? '添加第一台设备' : '没有符合筛选的设备' }}</button>
+      </div>
+      <div v-else class="space-y-3">
+        <div
+          v-for="device in filteredDevices"
+          :key="device.deviceId"
+          class="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+        >
+          <!-- Card header: name + status -->
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <RouterLink class="font-medium text-sky-700 hover:underline dark:text-sky-300" :to="{ name: 'device-detail', params: { deviceId: device.deviceId } }">
+                {{ device.remark || device.model || device.deviceId }}
+              </RouterLink>
+              <div class="mt-1 text-xs text-slate-500 truncate">{{ device.deviceId }}</div>
+            </div>
+            <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium" :class="stateClass(device.displayState)">
+              {{ t(`states.${device.displayState}`) }}
+            </span>
+          </div>
+
+          <!-- Card details -->
+          <div class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div>
+              <span class="text-slate-500">分组</span>
+              <div class="mt-0.5 font-medium">{{ device.group || '未分组' }}</div>
+            </div>
+            <div>
+              <span class="text-slate-500">APK</span>
+              <div class="mt-0.5 font-medium">{{ device.apkVersion || '-' }}</div>
+            </div>
+            <div class="col-span-2">
+              <span class="text-slate-500">ADB</span>
+              <div class="mt-0.5 font-medium truncate">{{ device.temporaryAdbSerial || '-' }}</div>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div v-if="(device.tags ?? []).length > 0" class="mt-2 flex flex-wrap gap-1">
+            <span v-for="tag in device.tags" :key="tag" class="rounded-full bg-sky-50 px-2 py-0.5 text-xs text-sky-700 dark:bg-sky-950 dark:text-sky-200">{{ tag }}</span>
+          </div>
+
+          <!-- Card footer: time + actions -->
+          <div class="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 dark:border-slate-800">
+            <span class="text-xs text-slate-400">{{ new Date(device.updatedAt).toLocaleDateString() }}</span>
+            <div class="flex gap-2">
+              <button class="icon-button text-slate-600 dark:text-slate-300" title="编辑设备信息" @click="beginEditDevice(device)">
+                <span class="icon-[solar--pen-new-square-bold-duotone] size-5" />
+              </button>
+              <button class="icon-button text-rose-600" title="删除设备" @click="deleteDevice(device)">
+                <span class="icon-[solar--trash-bin-trash-bold-duotone] size-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desktop table layout -->
+    <div class="hidden overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:block">
       <table class="w-full text-left text-sm">
         <thead class="bg-slate-100 text-slate-500 dark:bg-slate-800">
           <tr>
