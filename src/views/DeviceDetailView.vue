@@ -108,12 +108,26 @@ const screenContainerRef = ref<HTMLElement | null>(null)
 const transportMode = ref<'tcp' | 'udp'>('tcp')
 const streamInterval = ref('1200') // ms between screenshot refreshes
 const streamQuality = ref<'png' | 'jpeg'>('png')
+const videoResolution = ref('720p')
+const videoBitrateKbps = ref('2500')
 
 const streamIntervalOptions = [
   { label: '低频 (2s)', value: '2000' },
   { label: '标准 (1.2s)', value: '1200' },
   { label: '流畅 (0.6s)', value: '600' },
   { label: '极速 (0.3s)', value: '300' },
+]
+const videoResolutionOptions = [
+  { label: '流畅 480p', value: '480p' },
+  { label: '标准 720p', value: '720p' },
+  { label: '高清 1080p', value: '1080p' },
+  { label: '原始分辨率', value: 'source' },
+]
+const videoBitrateOptions = [
+  { label: '省流 1.2 Mbps', value: '1200' },
+  { label: '标准 2.5 Mbps', value: '2500' },
+  { label: '清晰 5 Mbps', value: '5000' },
+  { label: '高码率 8 Mbps', value: '8000' },
 ]
 
 function toggleFullscreen() {
@@ -135,7 +149,8 @@ if (typeof document !== 'undefined') {
 
 const activeTab = ref<'control' | 'terminal' | 'apps' | 'files' | 'hardware' | 'system' | 'power'>('control')
 const screenshotUrl = ref('')
-const streaming = ref(false)
+const screenshotStreaming = ref(false)
+const videoStreaming = ref(false)
 const controlEnabled = ref(false)
 const bundledApkInstalled = ref(false)
 const busy = ref(false)
@@ -321,13 +336,18 @@ function notify(message: string, type: 'success' | 'error' | 'info' = 'info', ta
   window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type, target } }))
 }
 
-function refreshScreenshot() {
+function refreshScreenshot(source: 'screenshot' | 'video' = videoStreaming.value ? 'video' : 'screenshot') {
   if (!canUseScreenPreview.value) {
     setMessage('该设备还没有可用的 ADB 或 APK 屏幕预览通道。')
     return
   }
-  const format = streamQuality.value === 'jpeg' ? '&format=jpeg' : ''
-  screenshotUrl.value = `${controlUrl('control/screenshot')}?t=${Date.now()}${format}`
+  const params = new URLSearchParams({ t: String(Date.now()) })
+  if (source === 'video') {
+    params.set('source', 'apk')
+  } else if (streamQuality.value === 'jpeg') {
+    params.set('format', 'jpeg')
+  }
+  screenshotUrl.value = `${controlUrl('control/screenshot')}?${params.toString()}`
 }
 
 async function saveScreenshot() {
@@ -368,39 +388,43 @@ const isInitialLoad = ref(true)
 
 function onScreenError() {
   screenshotUrl.value = ''
-  if (streaming.value) {
+  if (videoStreaming.value) {
     setMessage('实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
+  } else if (screenshotStreaming.value) {
+    setMessage('截图流刷新失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。')
   } else {
     setMessage('截图加载失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
   }
   // Only notify on user-triggered refresh, not on initial page load
-  if (!isInitialLoad.value) {
+  if (!isInitialLoad.value && !videoStreaming.value) {
     notify(message.value, 'error', '/help#adb-auth')
   }
 }
 
-function startStream() {
+function startScreenshotStream() {
   if (!canUseScreenPreview.value) {
-    setMessage(adbDisabledReason.value || '当前设备无法启动实时屏幕视频。')
+    setMessage(adbDisabledReason.value || '当前设备无法启动截图流。')
     return
   }
-  streaming.value = true
-  refreshScreenshot()
+  screenshotStreaming.value = true
+  refreshScreenshot('screenshot')
   stopTimer()
-  refreshTimer = window.setInterval(refreshScreenshot, parseInt(streamInterval.value))
+  refreshTimer = window.setInterval(() => refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot'), parseInt(streamInterval.value))
 }
 
 // Restart stream timer when interval changes during streaming
 watch(streamInterval, (newVal) => {
-  if (streaming.value) {
+  if (screenshotStreaming.value) {
     stopTimer()
-    refreshTimer = window.setInterval(refreshScreenshot, parseInt(newVal))
+    refreshTimer = window.setInterval(() => refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot'), parseInt(newVal))
   }
 })
 
-function stopStream() {
-  streaming.value = false
-  stopTimer()
+function stopScreenshotStream() {
+  screenshotStreaming.value = false
+  if (!videoStreaming.value) {
+    stopTimer()
+  }
 }
 
 function stopTimer() {
@@ -435,7 +459,7 @@ async function sendControl(action: string, body: object, successText: string) {
   try {
     const result = await api<AdbCommandResult>(controlUrl(`control/${action}`), { method: 'POST', body: JSON.stringify(body) })
     message.value = result.success ? successText : `控制失败：${result.stderr || result.stdout || 'ADB 命令执行失败。'}`
-    if (streaming.value) refreshScreenshot()
+    if (screenshotStreaming.value || videoStreaming.value) refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot')
   } catch (error) { reportError(error, '控制请求发送失败。') }
   finally { busy.value = false }
 }
@@ -530,13 +554,57 @@ async function waitForDeviceRefresh(timeoutMs = 9000) {
 async function requestScreenPreviewPermission() {
   busy.value = true
   try {
-    const result = await api<AdbCommandResult>(controlUrl('apps/start-screen-preview'), { method: 'POST', body: JSON.stringify({}) })
+    const result = await api<AdbCommandResult>(controlUrl('apps/start-screen-preview'), {
+      method: 'POST',
+      body: JSON.stringify({
+        resolution: videoResolution.value,
+        bitrateKbps: Number(videoBitrateKbps.value),
+      }),
+    })
     message.value = result.success ? '已在手机上打开屏幕预览授权页，请确认系统弹窗。' : result.stderr || result.stdout || '屏幕预览授权页启动失败。'
     notify(message.value, result.success ? 'success' : 'error')
+    return result.success
   } catch (error) {
     reportError(error, '屏幕预览授权页启动失败。')
+    return false
   } finally {
     busy.value = false
+  }
+}
+
+async function startVideoStream() {
+  if (!canUseAdb.value) {
+    setMessage('实时视频流需要先通过 ADB 从桌面端唤起手机录屏授权。')
+    return
+  }
+
+  if (!await requestScreenPreviewPermission()) {
+    return
+  }
+  videoStreaming.value = true
+  if (!screenshotStreaming.value) {
+    screenshotStreaming.value = true
+  }
+  stopTimer()
+  window.setTimeout(() => refreshScreenshot('video'), 1200)
+  refreshTimer = window.setInterval(() => refreshScreenshot('video'), parseInt(streamInterval.value))
+}
+
+async function stopVideoStream() {
+  videoStreaming.value = false
+  busy.value = true
+  try {
+    await api<AdbCommandResult>(controlUrl('apps/stop-screen-preview'), { method: 'POST', body: JSON.stringify({}) })
+  } catch {
+    // The UI can still fall back to the screenshot stream if the APK channel is already closed.
+  } finally {
+    busy.value = false
+  }
+
+  if (screenshotStreaming.value) {
+    stopTimer()
+    refreshScreenshot('screenshot')
+    refreshTimer = window.setInterval(() => refreshScreenshot('screenshot'), parseInt(streamInterval.value))
   }
 }
 
@@ -618,6 +686,9 @@ onMounted(async () => {
   await devices.load()
   startPermissionPolling()
   startDeviceStatePolling()
+  if (canUseScreenPreview.value) {
+    startScreenshotStream()
+  }
 
   if (canUseAdb.value) {
     // Auto-detect and install APK if needed
@@ -648,6 +719,9 @@ async function autoDetectAndInstallApk() {
 }
 
 onUnmounted(() => {
+  if (videoStreaming.value) {
+    void api<AdbCommandResult>(controlUrl('apps/stop-screen-preview'), { method: 'POST', body: JSON.stringify({}) }).catch(() => {})
+  }
   stopTimer()
   stopPermissionTimer()
   stopDeviceStatePolling()
@@ -670,10 +744,13 @@ function stopDeviceStatePolling() {
   if (deviceStateTimer !== undefined) { clearInterval(deviceStateTimer); deviceStateTimer = undefined }
 }
 
-// Watch for device state changes - stop streaming if ADB disconnects
+// Keep the default screenshot stream aligned with device availability.
 watch(() => canUseScreenPreview.value, (ready) => {
-  if (!ready && streaming.value) {
-    stopStream()
+  if (!ready) {
+    videoStreaming.value = false
+    stopScreenshotStream()
+  } else if (!screenshotStreaming.value && activeTab.value === 'control') {
+    startScreenshotStream()
   }
 })
 
@@ -817,7 +894,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 text-white">
           <div class="flex items-center gap-2 text-sm">
             <span class="icon-[solar--smartphone-2-bold-duotone] size-5 text-sky-300" />
-            <span>{{ streaming ? '实时观看中' : '手机控制' }}</span>
+            <span>{{ videoStreaming ? '实时视频流' : screenshotStreaming ? '截图流' : '手机控制' }}</span>
             <span v-if="canUseApk && device?.internalState === 'Online'" class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200">APK 控制</span>
             <span v-else-if="canUseApk" class="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-200">APK 待授权</span>
             <span v-else class="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs text-sky-200">ADB 控制</span>
@@ -835,17 +912,13 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
               <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
-            <button class="stream-control stream-button" :disabled="!canUseScreenPreview" @click="refreshScreenshot">
+            <button class="stream-control stream-button" :disabled="!canUseScreenPreview" @click="refreshScreenshot('screenshot')">
               <span class="icon-[solar--refresh-bold-duotone] size-5" />
               <span>刷新屏幕</span>
             </button>
-            <button class="stream-control stream-primary" :disabled="!canUseScreenPreview" @click="streaming ? stopStream() : startStream()">
-              <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
-              <span>{{ streaming ? '停止实时屏幕视频' : '实时屏幕视频' }}</span>
-            </button>
-            <button v-if="canUseAdb && hasKnownCompanionApk" class="stream-control stream-button" :disabled="busy" @click="requestScreenPreviewPermission">
-              <span class="icon-[solar--screen-share-bold-duotone] size-5" />
-              <span>授权预览</span>
+            <button class="stream-control stream-primary" :disabled="!canUseScreenPreview" @click="screenshotStreaming ? stopScreenshotStream() : startScreenshotStream()">
+              <span :class="[screenshotStreaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
+              <span>{{ screenshotStreaming ? '暂停截图流' : '开启截图流' }}</span>
             </button>
             <label class="stream-control stream-toggle" :class="controlEnabled ? 'stream-toggle-on' : ''">
               <input v-model="controlEnabled" class="glass-checkbox size-4" type="checkbox" :disabled="!canUseAdb" />
@@ -887,6 +960,29 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
       </div>
 
       <aside class="space-y-4">
+        <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold">实时视频流</h2>
+            <span :class="videoStreaming ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'" class="rounded-full px-2 py-0.5 text-xs font-medium">
+              {{ videoStreaming ? '推送中' : '未开启' }}
+            </span>
+          </div>
+          <div class="grid gap-3">
+            <label class="grid gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>视频清晰度</span>
+              <LiquidSelect v-model="videoResolution" class="w-full" :options="videoResolutionOptions" />
+            </label>
+            <label class="grid gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+              <span>码率</span>
+              <LiquidSelect v-model="videoBitrateKbps" class="w-full" :options="videoBitrateOptions" />
+            </label>
+            <button class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all hover:bg-sky-600 disabled:opacity-60" :disabled="busy || !canUseAdb || !hasKnownCompanionApk" @click="videoStreaming ? stopVideoStream() : startVideoStream()">
+              <span :class="[videoStreaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
+              <span>{{ videoStreaming ? '停止实时视频流' : '启动实时视频流' }}</span>
+            </button>
+            <p class="text-xs leading-5 text-slate-500 dark:text-slate-400">实时视频流由手机端录屏后推送；截图流仍会在进入页面后默认工作。</p>
+          </div>
+        </div>
         <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 class="mb-3 text-sm font-semibold">快捷控制</h2>
           <div class="grid grid-cols-3 gap-2">
