@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ApiError, api } from '@/api/client'
 import { useDeviceStore } from '@/stores/devices'
 import LiquidSelect from '@/components/LiquidSelect.vue'
@@ -41,9 +41,18 @@ interface SaveFilePickerWindow extends Window {
 }
 
 const route = useRoute()
+const router = useRouter()
 const devices = useDeviceStore()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
-const device = computed(() => devices.devices.find((item) => item.deviceId === deviceId.value))
+const routeAdbSerial = computed(() => deviceId.value.startsWith('adb:') ? deviceId.value.slice(4) : '')
+const device = computed(() => {
+  const id = deviceId.value
+  return devices.devices.find((item) => item.deviceId === id) ??
+    (routeAdbSerial.value
+      ? devices.devices.find((item) => item.temporaryAdbSerial?.toLowerCase() === routeAdbSerial.value.toLowerCase())
+      : undefined)
+})
+const controlDeviceId = computed(() => device.value?.deviceId || deviceId.value)
 const adbReadyStates = new Set(['Matched', 'Online', 'Authorized', 'Updating'])
 const canUseAdb = computed(() => {
   const current = device.value
@@ -86,7 +95,7 @@ const missingPermissionNames = computed(() => permissionRows.value.filter((item)
 
 // Dynamic placeholder text for screen area
 const screenPlaceholderText = computed(() => {
-  if (canUseApk.value && !canUseAdb.value) return 'APK 在线。若还没有画面，请在手机端开启屏幕预览权限。'
+  if (canUseApk.value && !canUseAdb.value) return 'APK 在线。若还没有画面，请从桌面端发起屏幕预览并在手机系统弹窗中确认。'
   if (!canUseAdb.value && !canUseApk.value) return '等待设备连接或安装 APK。'
   if (device.value?.apkVersion && device.value.internalState === 'PermissionRequired') return '请在手机上完成权限配置。'
   if (!device.value?.apkVersion) return '请先安装 APK 以获取实时控制能力。'
@@ -290,7 +299,7 @@ const powerActions = [
 ] as const
 
 function controlUrl(path: string) {
-  return `/api/devices/${encodeURIComponent(deviceId.value)}/${path}`
+  return `/api/devices/${encodeURIComponent(controlDeviceId.value)}/${path}`
 }
 
 function formatKb(value: number) {
@@ -360,9 +369,9 @@ const isInitialLoad = ref(true)
 function onScreenError() {
   screenshotUrl.value = ''
   if (streaming.value) {
-    setMessage('实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线或已开启屏幕预览权限。')
+    setMessage('实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
   } else {
-    setMessage('截图加载失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线或已开启屏幕预览权限。')
+    setMessage('截图加载失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
   }
   // Only notify on user-triggered refresh, not on initial page load
   if (!isInitialLoad.value) {
@@ -499,10 +508,23 @@ async function installBundledApk() {
     bundledApkInstalled.value = result.success
     message.value = result.success ? (result.stdout?.includes('旧版 APK') ? '检测到旧版 APK，已自动替换并打开手机端引导页。请在手机上确认权限。' : '内置 APK 已安装，并已打开手机端引导页。请在手机上开启所需权限。') : result.stderr || result.stdout || '内置 APK 安装失败。'
     notify(message.value, result.success ? 'success' : 'error', result.success ? undefined : '/help#apk-cert')
-    await devices.load()
+    await waitForDeviceRefresh()
     if (activeTab.value === 'apps') await loadPackages()
   } catch (error) { reportError(error, '内置 APK 安装请求失败。'); notify(message.value, 'error', '/help#install-apk') }
   finally { busy.value = false; installingApk.value = false; installingApkName.value = '' }
+}
+
+async function waitForDeviceRefresh(timeoutMs = 9000) {
+  const originalDeviceId = deviceId.value
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await devices.load()
+    if (device.value && (device.value.apkVersion || device.value.deviceId !== originalDeviceId)) {
+      return
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 700))
+  }
+  await devices.load()
 }
 
 async function requestScreenPreviewPermission() {
@@ -680,7 +702,10 @@ watch(activeTab, (tab) => {
   }
 })
 
-watch(() => device.value?.deviceId, () => {
+watch(() => device.value?.deviceId, (canonicalId) => {
+  if (canonicalId && canonicalId !== deviceId.value) {
+    router.replace({ name: 'device-detail', params: { deviceId: canonicalId } })
+  }
   apkBannerDismissed.value = false
 })
 
@@ -797,7 +822,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
       {{ adbDisabledReason }} 依赖 ADB 的按钮已自动禁用。
     </div>
     <div v-if="!canUseAdb && !canUseApk" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">该设备当前未连接 ADB，也没有 APK 在线通道。请先连接 ADB 或安装并启动 APK 后再操作。</div>
-    <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">APK 已在线，可以使用实时屏幕视频；点击、按键、软件管理等依赖 ADB 的控制按钮已禁用。若没有画面，请在手机端开启屏幕预览权限。</div>
+    <div v-else-if="!canUseAdb && canUseApk" class="mb-4 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-200">APK 已在线，可以使用实时屏幕视频；点击、按键、软件管理等依赖 ADB 的控制按钮已禁用。若没有画面，请从桌面端发起屏幕预览并在手机系统弹窗中确认。</div>
     <div v-else-if="canUseAdb && device?.internalState === 'PermissionRequired'" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       <div class="min-w-0"><p class="font-medium">APK 已连接，但还需要开启权限：{{ missingPermissionNames.join('、') || '等待手机端上报' }}</p><div class="mt-2 flex flex-wrap gap-2"><span v-for="item in permissionRows" :key="item.key" class="rounded-full px-2.5 py-1 text-xs font-medium" :class="item.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200'">{{ item.label }}：{{ item.enabled ? '已开启' : '未开启' }}</span></div></div>
       <RouterLink class="glass-button" to="/help#apk-permissions"><span class="icon-[solar--question-circle-bold-duotone] size-5" /><span>权限帮助</span></RouterLink>
@@ -842,7 +867,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <span :class="[streaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
               <span>{{ streaming ? '停止实时屏幕视频' : '实时屏幕视频' }}</span>
             </button>
-            <button v-if="canUseAdb && hasKnownCompanionApk && !canUseApk" class="stream-control stream-button" :disabled="busy" @click="requestScreenPreviewPermission">
+            <button v-if="canUseAdb && hasKnownCompanionApk" class="stream-control stream-button" :disabled="busy" @click="requestScreenPreviewPermission">
               <span class="icon-[solar--screen-share-bold-duotone] size-5" />
               <span>授权预览</span>
             </button>
