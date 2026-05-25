@@ -618,13 +618,6 @@ onMounted(async () => {
   await devices.load()
   startPermissionPolling()
   startDeviceStatePolling()
-  if (canUseScreenPreview.value) {
-    if (canUseApk.value) {
-      startStream()
-    } else if (canUseAdb.value) {
-      refreshScreenshot()
-    }
-  }
 
   if (canUseAdb.value) {
     // Auto-detect and install APK if needed
@@ -712,35 +705,18 @@ watch(() => device.value?.deviceId, (canonicalId) => {
 let permissionTimer: ReturnType<typeof window.setInterval> | undefined
 function startPermissionPolling() {
   if (permissionTimer) return
-  // Periodically refresh device state to pick up permission changes from APK heartbeat
-  // Also check input method via ADB since APK only sends permission state on initial connect
+  // Periodically refresh device state to pick up permission changes from APK heartbeat.
   permissionTimer = window.setInterval(async () => {
     if (!device.value?.apkVersion) return
     try {
-      // Refresh the device list to get updated permission state from APK
       await devices.load()
-      // Also check input method via ADB command for more reliable detection
-      if (canUseAdb.value) {
-        const result = await api<AdbCommandResult>(controlUrl('terminal'), {
-          method: 'POST',
-          body: JSON.stringify({ command: 'shell settings get secure enabled_input_methods' }),
-        })
-        if (result.success && result.stdout) {
-          const apkPackage = 'com.webadb.devices'
-          const hasIme = result.stdout.toLowerCase().includes(apkPackage)
-          // Update local device permission state if different
-          if (device.value && device.value.permissions && device.value.permissions.inputMethod !== hasIme) {
-            device.value.permissions.inputMethod = hasIme
-          }
-        }
-      }
       const allGranted = permissionRows.value.every(item => item.enabled)
       if (allGranted && showPermissionBanner.value) { showPermissionBanner.value = false; notify('所有权限已配置完成！', 'success'); stopPermissionTimer() }
       else if (!allGranted && device.value?.internalState === 'Online' && !showPermissionBanner.value) {
         setTimeout(() => { if (!permissionRows.value.every(item => item.enabled)) showPermissionBanner.value = true }, 3000)
       }
     } catch { /* silent */ }
-  }, 5000)
+  }, 3000)
 }
 function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInterval(permissionTimer); permissionTimer = undefined } }
 </script>
