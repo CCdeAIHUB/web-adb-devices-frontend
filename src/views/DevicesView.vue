@@ -14,6 +14,8 @@ const pairHost = ref('')
 const pairPort = ref('')
 const pairCode = ref('')
 const pairConnectPort = ref('')
+const pairStep = ref<1 | 2>(1)
+const pairSucceeded = ref(false)
 const tcpipHost = ref('')
 const tcpipPort = ref('5555')
 const commandRunning = ref(false)
@@ -21,6 +23,8 @@ const commandMessage = ref('')
 const environmentLoading = ref(false)
 const adbInstalling = ref(false)
 const environment = ref<EnvironmentSelfCheck | null>(null)
+const canRunPair = computed(() => Boolean(environment.value?.adb.exists && pairHost.value.trim() && pairPort.value.trim() && pairCode.value.trim() && !commandRunning.value))
+const canRunPairConnect = computed(() => Boolean(environment.value?.adb.exists && pairHost.value.trim() && pairConnectPort.value.trim() && !commandRunning.value))
 const editingDeviceId = ref('')
 const metadataSaving = ref(false)
 const metadataForm = ref({ remark: '', group: '', tags: '' })
@@ -249,16 +253,18 @@ async function runPair() {
   try {
     const result = await api<AdbCommandResult>('/api/devices/adb/pair', {
       method: 'POST',
-      body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value, connectPort: pairConnectPort.value }),
+      body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value, connectPort: '' }),
     })
     applyAdbScan(result.scan)
     if (!result.scan) {
       await scanAdb()
     }
+    if (result.success) {
+      pairSucceeded.value = true
+      pairStep.value = 2
+    }
     commandMessage.value = result.success
-      ? result.requiresConnect
-        ? formatCommandSuccess('配对已完成。', result.stdout, '还需要填写无线调试主页面显示的连接端口，然后点击“仅连接”。配对成功本身不会让设备出现在列表中。')
-        : formatCommandSuccess('配对并连接已完成。', result.stdout)
+      ? formatCommandSuccess('配对已完成。', result.stdout, '请回到手机“无线调试”主页面，查看“IP 地址和端口”里的连接端口，然后填写到第 2 步完成连接。')
       : localizeAdbError(result)
     checkForNewDevice()
   } catch (error) {
@@ -273,7 +279,7 @@ async function runConnect() {
 }
 
 async function runPairConnectOnly() {
-  await connectWireless(pairHost.value, pairConnectPort.value, '连接命令已执行。')
+  await connectWireless(pairHost.value, pairConnectPort.value, '无线 ADB 连接已完成。')
 }
 
 async function connectWireless(host: string, port: string, successPrefix: string) {
@@ -312,6 +318,9 @@ function checkForNewDevice() {
 // Save device count before operations for comparison
 async function openConnect(mode: 'usb' | 'pair' | 'tcpip' = 'usb') {
   activeMode.value = mode
+  if (mode === 'pair' && !pairSucceeded.value) {
+    pairStep.value = 1
+  }
   showConnect.value = true
   await loadEnvironment()
   if (environment.value?.adb.exists) {
@@ -329,6 +338,12 @@ async function openConnect(mode: 'usb' | 'pair' | 'tcpip' = 'usb') {
 function closeConnect() {
   showConnect.value = false
   stopScanTimer()
+}
+
+function goPairConnectStep() {
+  pairSucceeded.value = true
+  pairStep.value = 2
+  commandMessage.value = ''
 }
 
 function stopScanTimer() {
@@ -673,27 +688,89 @@ onUnmounted(stopScanTimer)
 
             <div v-else-if="activeMode === 'pair'" class="space-y-4">
               <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-                <h3 class="mb-3 font-semibold">Android 11+ 无线配对</h3>
-                <div class="grid gap-3 md:grid-cols-[1fr_120px_120px_120px]">
-                  <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="IP 地址" />
-                  <input v-model="pairPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对端口" />
-                  <input v-model="pairCode" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对码" />
-                  <input v-model="pairConnectPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="连接端口" />
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 class="font-semibold">Android 11+ 无线配对</h3>
+                  <div class="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-sm dark:border-slate-800 dark:bg-slate-950">
+                    <button
+                      class="h-8 rounded-md px-3 transition-all duration-300"
+                      :class="pairStep === 1 ? 'bg-white text-sky-700 shadow-sm dark:bg-slate-800 dark:text-sky-300' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+                      @click="pairStep = 1"
+                    >
+                      1 配对
+                    </button>
+                    <button
+                      class="h-8 rounded-md px-3 transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      :class="pairStep === 2 ? 'bg-white text-sky-700 shadow-sm dark:bg-slate-800 dark:text-sky-300' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+                      :disabled="!pairSucceeded"
+                      @click="pairStep = 2"
+                    >
+                      2 连接
+                    </button>
+                  </div>
                 </div>
-                <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                  配对端口来自“使用配对码配对”弹窗；连接端口来自“无线调试”主页面，两个端口通常不同。只有连接完成后，设备才会出现在列表中。
-                </p>
-                <div class="mt-4 flex flex-wrap gap-3">
-                  <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60" :disabled="commandRunning || !environment?.adb.exists" @click="runPair">
-                    <span class="icon-[solar--wi-fi-router-outline] size-5" />
-                    <span>{{ pairConnectPort ? '配对并连接' : '开始配对' }}</span>
-                  </button>
-                  <button class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-all duration-300 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-800 dark:hover:bg-sky-950" :disabled="commandRunning || !environment?.adb.exists || !pairHost || !pairConnectPort" @click="runPairConnectOnly">
-                    <span class="icon-[solar--link-circle-outline] size-5" />
-                    <span>仅连接</span>
+
+                <div v-if="pairStep === 1" class="space-y-4">
+                  <div class="rounded-lg bg-slate-50 p-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                    <p class="font-medium text-slate-800 dark:text-slate-100">手机上先这样打开配对码</p>
+                    <ol class="mt-3 grid gap-2">
+                      <li>1. 打开手机设置，进入“关于手机”或“软件信息”，连续点击版本号 7 次启用开发者模式。</li>
+                      <li>2. 返回设置，进入“开发者选项”，开启“无线调试”。</li>
+                      <li>3. 点进“无线调试”，选择“使用配对码配对设备”，保持弹窗打开。</li>
+                      <li>4. 把弹窗里的 IP 地址、配对端口和 6 位配对码填到下方。</li>
+                    </ol>
+                  </div>
+                  <div class="grid gap-3 md:grid-cols-[1fr_140px_140px]">
+                    <label class="grid gap-2 text-sm">
+                      <span class="font-medium">IP 地址</span>
+                      <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                      <span class="font-medium">配对端口</span>
+                      <input v-model="pairPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="弹窗端口" />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                      <span class="font-medium">配对码</span>
+                      <input v-model="pairCode" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="6 位数字" />
+                    </label>
+                  </div>
+                  <div class="flex flex-wrap gap-3">
+                    <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60" :disabled="!canRunPair" @click="runPair">
+                      <span class="icon-[solar--wi-fi-router-outline] size-5" />
+                      <span>开始配对</span>
+                    </button>
+                    <button class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-all duration-300 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-800 dark:hover:bg-sky-950" @click="goPairConnectStep">
+                      <span class="icon-[solar--link-circle-outline] size-5" />
+                      <span>已经配对，直接连接</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div v-else class="space-y-4">
+                  <div class="rounded-lg bg-sky-50 p-4 text-sm text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                    配对成功后，回到手机“无线调试”主页面，查看“IP 地址和端口”。这里的端口通常和配对弹窗里的端口不同，只有完成连接后设备才会出现在列表中。
+                  </div>
+                  <div class="grid gap-3 md:grid-cols-[1fr_150px_auto]">
+                    <label class="grid gap-2 text-sm">
+                      <span class="font-medium">IP 地址</span>
+                      <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
+                    </label>
+                    <label class="grid gap-2 text-sm">
+                      <span class="font-medium">连接端口</span>
+                      <input v-model="pairConnectPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="主页面端口" />
+                    </label>
+                    <div class="flex items-end">
+                      <button class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60 md:w-auto" :disabled="!canRunPairConnect" @click="runPairConnectOnly">
+                        <span class="icon-[solar--link-circle-outline] size-5" />
+                        <span>完成连接</span>
+                      </button>
+                    </div>
+                  </div>
+                  <button class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-all duration-300 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-800 dark:hover:bg-sky-950" @click="pairStep = 1">
+                    <span class="icon-[solar--arrow-left-outline] size-5" />
+                    <span>返回重新配对</span>
                   </button>
                 </div>
-                <p v-if="commandMessage" class="mt-3 rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ commandMessage }}</p>
+                <p v-if="commandMessage" class="mt-4 whitespace-pre-line rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ commandMessage }}</p>
               </div>
             </div>
 
