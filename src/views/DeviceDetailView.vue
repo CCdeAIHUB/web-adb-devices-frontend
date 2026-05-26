@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ApiError, api } from '@/api/client'
-import { useDeviceStore } from '@/stores/devices'
+import { useDeviceStore, type DeviceRecord } from '@/stores/devices'
 import LiquidSelect from '@/components/LiquidSelect.vue'
 import PageHeader from '@/components/PageHeader.vue'
 
@@ -45,11 +45,22 @@ const router = useRouter()
 const devices = useDeviceStore()
 const deviceId = computed(() => String(route.params.deviceId ?? ''))
 const routeAdbSerial = computed(() => deviceId.value.startsWith('adb:') ? deviceId.value.slice(4) : '')
-const device = computed(() => {
+const lastKnownIdentity = ref({ deviceId: '', adbSerial: '', androidId: '' })
+const device = computed<DeviceRecord | undefined>(() => {
   const id = deviceId.value
+  const remembered = lastKnownIdentity.value
   return devices.devices.find((item) => item.deviceId === id) ??
     (routeAdbSerial.value
       ? devices.devices.find((item) => item.temporaryAdbSerial?.toLowerCase() === routeAdbSerial.value.toLowerCase())
+      : undefined) ??
+    (remembered.deviceId
+      ? devices.devices.find((item) => item.deviceId === remembered.deviceId)
+      : undefined) ??
+    (remembered.adbSerial
+      ? devices.devices.find((item) => item.temporaryAdbSerial?.toLowerCase() === remembered.adbSerial.toLowerCase())
+      : undefined) ??
+    (remembered.androidId
+      ? devices.devices.find((item) => item.androidId?.toLowerCase() === remembered.androidId.toLowerCase())
       : undefined)
 })
 const controlDeviceId = computed(() => device.value?.deviceId || deviceId.value)
@@ -61,7 +72,8 @@ const canUseAdb = computed(() => {
   return adbReadyStates.has(current.displayState)
 })
 const canUseApk = computed(() => device.value?.internalState === 'Online' || device.value?.internalState === 'PermissionRequired')
-const canUseScreenPreview = computed(() => canUseAdb.value || canUseApk.value)
+const canUseScreenshotStream = computed(() => canUseAdb.value)
+const canUseScreenPreview = computed(() => canUseScreenshotStream.value || canUseApk.value)
 const stateLabel = computed(() => {
   const current = device.value
   if (!current) return '未发现设备'
@@ -95,6 +107,8 @@ const missingPermissionNames = computed(() => permissionRows.value.filter((item)
 
 // Dynamic placeholder text for screen area
 const screenPlaceholderText = computed(() => {
+  if (videoStreaming.value) return '正在等待手机端推送实时视频画面，请确认手机上的屏幕录制授权已允许。'
+  if (screenshotStreaming.value) return '正在刷新截图流...'
   if (canUseApk.value && !canUseAdb.value) return 'APK 在线。若还没有画面，请从桌面端发起屏幕预览并在手机系统弹窗中确认。'
   if (!canUseAdb.value && !canUseApk.value) return '等待设备连接或安装 APK。'
   if (device.value?.apkVersion && device.value.internalState === 'PermissionRequired') return '请在手机上完成权限配置。'
@@ -162,7 +176,12 @@ const apkBannerDismissed = ref(false)
 const inputText = ref('')
 const pointerDown = ref<{ x: number; y: number; time: number } | null>(null)
 const liveScreen = ref({ width: 1080, height: 2400 })
+const frameLoading = ref(false)
 let refreshTimer: ReturnType<typeof window.setInterval> | undefined
+let frameAbortController: AbortController | undefined
+let screenObjectUrl = ''
+let lastFrameErrorAt = 0
+let videoWaitStartedAt = 0
 
 const terminalCommand = ref('shell getprop ro.product.model')
 const terminalOutput = ref('')
@@ -336,18 +355,121 @@ function notify(message: string, type: 'success' | 'error' | 'info' = 'info', ta
   window.dispatchEvent(new CustomEvent('wad:notify', { detail: { message, type, target } }))
 }
 
-function refreshScreenshot(source: 'screenshot' | 'video' = videoStreaming.value ? 'video' : 'screenshot') {
-  if (!canUseScreenPreview.value) {
-    setMessage('该设备还没有可用的 ADB 或 APK 屏幕预览通道。')
-    return
-  }
+function streamIntervalMs() {
+  const value = Number.parseInt(streamInterval.value, 10)
+  return Number.isFinite(value) ? Math.max(300, value) : 1200
+}
+
+function isSourceStreaming(source: 'screenshot' | 'video') {
+  return source === 'video'
+    ? videoStreaming.value
+    : screenshotStreaming.value && !videoStreaming.value
+}
+
+function buildFrameUrl(source: 'screenshot' | 'video') {
   const params = new URLSearchParams({ t: String(Date.now()) })
   if (source === 'video') {
     params.set('source', 'apk')
   } else if (streamQuality.value === 'jpeg') {
     params.set('format', 'jpeg')
   }
-  screenshotUrl.value = `${controlUrl('control/screenshot')}?${params.toString()}`
+  return `${controlUrl('control/screenshot')}?${params.toString()}`
+}
+
+function scheduleNextFrame(source: 'screenshot' | 'video', delay = streamIntervalMs()) {
+  stopTimer()
+  if (activeTab.value !== 'control' || !isSourceStreaming(source)) {
+    return
+  }
+  refreshTimer = window.setTimeout(() => {
+    void refreshScreenshot(source)
+  }, delay)
+}
+
+function abortFrameRequest() {
+  frameAbortController?.abort()
+  frameAbortController = undefined
+}
+
+function setScreenObjectUrl(nextUrl: string) {
+  const previous = screenObjectUrl
+  screenObjectUrl = nextUrl
+  screenshotUrl.value = nextUrl
+  if (previous) {
+    window.setTimeout(() => URL.revokeObjectURL(previous), 1000)
+  }
+}
+
+function clearScreenObjectUrl() {
+  if (screenObjectUrl) {
+    URL.revokeObjectURL(screenObjectUrl)
+    screenObjectUrl = ''
+  }
+  screenshotUrl.value = ''
+}
+
+function decodeImage(url: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => reject(new Error('设备返回的画面无法解码。'))
+    image.src = url
+  })
+}
+
+async function refreshScreenshot(source: 'screenshot' | 'video' = videoStreaming.value ? 'video' : 'screenshot', manual = false) {
+  if (source === 'screenshot' && !canUseScreenshotStream.value) {
+    setMessage(adbDisabledReason.value || '当前设备无法启动截图流。')
+    return
+  }
+  if (source === 'video' && !videoStreaming.value) {
+    return
+  }
+  if (frameLoading.value) {
+    return
+  }
+
+  frameLoading.value = true
+  frameAbortController = new AbortController()
+  try {
+    const response = await fetch(buildFrameUrl(source), {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: frameAbortController.signal,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new Error(body?.message || (source === 'video' ? '手机端尚未返回实时视频帧。' : 'ADB 未返回有效截图。'))
+    }
+
+    const blob = await response.blob()
+    if (blob.size < 8 || !blob.type.startsWith('image/')) {
+      throw new Error(source === 'video' ? '手机端返回的实时视频帧无效。' : '设备没有返回有效截图。')
+    }
+
+    const nextUrl = URL.createObjectURL(blob)
+    try {
+      const size = await decodeImage(nextUrl)
+      liveScreen.value = size
+      setScreenObjectUrl(nextUrl)
+      if (message.value.startsWith('截图流刷新失败') || message.value.startsWith('实时画面传输失败') || message.value.startsWith('正在等待手机端推送')) {
+        message.value = ''
+      }
+    } catch (error) {
+      URL.revokeObjectURL(nextUrl)
+      throw error
+    }
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      handleFrameError(source, error, manual)
+    }
+  } finally {
+    frameLoading.value = false
+    frameAbortController = undefined
+    if (isSourceStreaming(source)) {
+      scheduleNextFrame(source)
+    }
+  }
 }
 
 async function saveScreenshot() {
@@ -377,59 +499,77 @@ async function saveScreenshot() {
   }
 }
 
-function onScreenLoaded(event: Event) {
-  const image = event.target as HTMLImageElement
-  if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-    liveScreen.value = { width: image.naturalWidth, height: image.naturalHeight }
-  }
-}
-
 const isInitialLoad = ref(true)
 
-function onScreenError() {
-  screenshotUrl.value = ''
-  if (videoStreaming.value) {
-    setMessage('实时画面传输失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
-  } else if (screenshotStreaming.value) {
-    setMessage('截图流刷新失败：设备没有返回有效画面，请确认屏幕已解锁且 ADB 在线。')
-  } else {
-    setMessage('截图加载失败：设备没有返回有效画面，请确认屏幕已解锁、ADB 在线，或已从桌面端发起屏幕预览并在手机上确认。')
-  }
-  // Only notify on user-triggered refresh, not on initial page load
-  if (!isInitialLoad.value && !videoStreaming.value) {
-    notify(message.value, 'error', '/help#adb-auth')
+function handleFrameError(source: 'screenshot' | 'video', error: unknown, manual = false) {
+  const now = Date.now()
+  const detail = error instanceof Error ? error.message : '设备没有返回有效画面。'
+  if (source === 'video') {
+    const waiting = videoWaitStartedAt > 0 && now - videoWaitStartedAt < 8000
+    if (waiting) {
+      setMessage('正在等待手机端推送实时视频画面，请确认手机上的屏幕录制授权已允许。')
+    } else if (manual || now - lastFrameErrorAt > 5000) {
+      setMessage(`实时画面传输失败：${detail}`)
+      lastFrameErrorAt = now
+    }
+  } else if (manual || now - lastFrameErrorAt > 5000) {
+    setMessage(`截图流刷新失败：${detail}`)
+    lastFrameErrorAt = now
+    if (!isInitialLoad.value) {
+      notify(message.value, 'error', '/help#adb-auth')
+    }
   }
 }
 
-function startScreenshotStream() {
-  if (!canUseScreenPreview.value) {
+async function startScreenshotStream() {
+  if (!canUseScreenshotStream.value) {
     setMessage(adbDisabledReason.value || '当前设备无法启动截图流。')
     return
   }
-  screenshotStreaming.value = true
-  refreshScreenshot('screenshot')
-  stopTimer()
-  refreshTimer = window.setInterval(() => refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot'), parseInt(streamInterval.value))
-}
-
-// Restart stream timer when interval changes during streaming
-watch(streamInterval, (newVal) => {
-  if (screenshotStreaming.value) {
-    stopTimer()
-    refreshTimer = window.setInterval(() => refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot'), parseInt(newVal))
+  if (videoStreaming.value) {
+    await stopVideoStream()
   }
-})
+  screenshotStreaming.value = true
+  abortFrameRequest()
+  void refreshScreenshot('screenshot', true)
+}
 
 function stopScreenshotStream() {
   screenshotStreaming.value = false
   if (!videoStreaming.value) {
     stopTimer()
+    abortFrameRequest()
   }
 }
 
 function stopTimer() {
-  if (refreshTimer !== undefined) { clearInterval(refreshTimer); refreshTimer = undefined }
+  if (refreshTimer !== undefined) {
+    clearTimeout(refreshTimer)
+    refreshTimer = undefined
+  }
 }
+
+function stopAllStreams() {
+  screenshotStreaming.value = false
+  videoStreaming.value = false
+  stopTimer()
+  abortFrameRequest()
+}
+
+// Restart stream timer when interval changes during streaming
+watch(streamInterval, () => {
+  if (videoStreaming.value) {
+    scheduleNextFrame('video', 0)
+  } else if (screenshotStreaming.value) {
+    scheduleNextFrame('screenshot', 0)
+  }
+})
+
+watch(streamQuality, () => {
+  if (screenshotStreaming.value && !videoStreaming.value) {
+    scheduleNextFrame('screenshot', 0)
+  }
+})
 
 function pointFromEvent(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement
@@ -459,7 +599,7 @@ async function sendControl(action: string, body: object, successText: string) {
   try {
     const result = await api<AdbCommandResult>(controlUrl(`control/${action}`), { method: 'POST', body: JSON.stringify(body) })
     message.value = result.success ? successText : `控制失败：${result.stderr || result.stdout || 'ADB 命令执行失败。'}`
-    if (screenshotStreaming.value || videoStreaming.value) refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot')
+    if (screenshotStreaming.value || videoStreaming.value) void refreshScreenshot(videoStreaming.value ? 'video' : 'screenshot', true)
   } catch (error) { reportError(error, '控制请求发送失败。') }
   finally { busy.value = false }
 }
@@ -581,17 +721,20 @@ async function startVideoStream() {
   if (!await requestScreenPreviewPermission()) {
     return
   }
+  screenshotStreaming.value = false
   videoStreaming.value = true
-  if (!screenshotStreaming.value) {
-    screenshotStreaming.value = true
-  }
+  videoWaitStartedAt = Date.now()
   stopTimer()
-  window.setTimeout(() => refreshScreenshot('video'), 1200)
-  refreshTimer = window.setInterval(() => refreshScreenshot('video'), parseInt(streamInterval.value))
+  abortFrameRequest()
+  setMessage('正在等待手机端推送实时视频画面，请在手机系统弹窗中允许屏幕录制。')
+  scheduleNextFrame('video', 1200)
 }
 
 async function stopVideoStream() {
   videoStreaming.value = false
+  videoWaitStartedAt = 0
+  stopTimer()
+  abortFrameRequest()
   busy.value = true
   try {
     await api<AdbCommandResult>(controlUrl('apps/stop-screen-preview'), { method: 'POST', body: JSON.stringify({}) })
@@ -599,12 +742,6 @@ async function stopVideoStream() {
     // The UI can still fall back to the screenshot stream if the APK channel is already closed.
   } finally {
     busy.value = false
-  }
-
-  if (screenshotStreaming.value) {
-    stopTimer()
-    refreshScreenshot('screenshot')
-    refreshTimer = window.setInterval(() => refreshScreenshot('screenshot'), parseInt(streamInterval.value))
   }
 }
 
@@ -686,8 +823,8 @@ onMounted(async () => {
   await devices.load()
   startPermissionPolling()
   startDeviceStatePolling()
-  if (canUseScreenPreview.value) {
-    startScreenshotStream()
+  if (canUseScreenshotStream.value) {
+    void startScreenshotStream()
   }
 
   if (canUseAdb.value) {
@@ -722,7 +859,8 @@ onUnmounted(() => {
   if (videoStreaming.value) {
     void api<AdbCommandResult>(controlUrl('apps/stop-screen-preview'), { method: 'POST', body: JSON.stringify({}) }).catch(() => {})
   }
-  stopTimer()
+  stopAllStreams()
+  clearScreenObjectUrl()
   stopPermissionTimer()
   stopDeviceStatePolling()
   if (messageTimer !== undefined) window.clearTimeout(messageTimer)
@@ -732,25 +870,33 @@ onUnmounted(() => {
 let deviceStateTimer: ReturnType<typeof window.setInterval> | undefined
 function startDeviceStatePolling() {
   if (deviceStateTimer) return
-  // Poll device state every 10 seconds to detect ADB disconnections
+  // Poll device state to detect ADB/APK handoff and disconnections while staying on the detail page.
   deviceStateTimer = window.setInterval(async () => {
     try {
-      // Re-scan ADB to detect disconnections, then reload
       await devices.scanAdb()
+      await devices.load()
     } catch { /* silent */ }
-  }, 10000)
+  }, 3000)
 }
 function stopDeviceStatePolling() {
   if (deviceStateTimer !== undefined) { clearInterval(deviceStateTimer); deviceStateTimer = undefined }
 }
 
-// Keep the default screenshot stream aligned with device availability.
-watch(() => canUseScreenPreview.value, (ready) => {
+watch(device, (current) => {
+  if (!current) return
+  lastKnownIdentity.value = {
+    deviceId: current.deviceId,
+    adbSerial: current.temporaryAdbSerial || lastKnownIdentity.value.adbSerial,
+    androidId: current.androidId || lastKnownIdentity.value.androidId,
+  }
+}, { immediate: true })
+
+// Keep the default screenshot stream aligned with ADB availability.
+watch(() => canUseScreenshotStream.value, (ready) => {
   if (!ready) {
-    videoStreaming.value = false
     stopScreenshotStream()
-  } else if (!screenshotStreaming.value && activeTab.value === 'control') {
-    startScreenshotStream()
+  } else if (!screenshotStreaming.value && !videoStreaming.value && activeTab.value === 'control') {
+    void startScreenshotStream()
   }
 })
 
@@ -769,6 +915,17 @@ watch(message, (value) => {
 watch(activeTab, (tab) => {
   if (tab === 'hardware' && canUseAdb.value && !hardware.value) {
     loadHardware()
+  }
+  if (tab === 'control') {
+    if (videoStreaming.value) {
+      scheduleNextFrame('video', 0)
+    } else if (screenshotStreaming.value) {
+      scheduleNextFrame('screenshot', 0)
+    } else if (canUseScreenshotStream.value) {
+      void startScreenshotStream()
+    }
+  } else {
+    stopTimer()
   }
 })
 
@@ -912,11 +1069,11 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
               <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
-            <button class="stream-control stream-button" :disabled="!canUseScreenPreview" @click="refreshScreenshot('screenshot')">
+            <button class="stream-control stream-button" :disabled="frameLoading || !canUseScreenshotStream || videoStreaming" @click="refreshScreenshot('screenshot', true)">
               <span class="icon-[solar--refresh-bold-duotone] size-5" />
               <span>刷新屏幕</span>
             </button>
-            <button class="stream-control stream-primary" :disabled="!canUseScreenPreview" @click="screenshotStreaming ? stopScreenshotStream() : startScreenshotStream()">
+            <button class="stream-control stream-primary" :disabled="!canUseScreenshotStream || videoStreaming" @click="screenshotStreaming ? stopScreenshotStream() : startScreenshotStream()">
               <span :class="[screenshotStreaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--play-circle-bold-duotone]', 'size-5']" />
               <span>{{ screenshotStreaming ? '暂停截图流' : '开启截图流' }}</span>
             </button>
@@ -936,7 +1093,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
             :style="{ aspectRatio: `${screenSize.width} / ${screenSize.height}` }"
             @pointerdown="onPointerDown" @pointerup="onPointerUp"
           >
-            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill rounded-[2rem]" draggable="false" alt="设备屏幕" @load="onScreenLoaded" @error="onScreenError" />
+            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill rounded-[2rem]" draggable="false" alt="设备屏幕" />
             <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400 rounded-[2rem]">{{ screenPlaceholderText }}</div>
             <!-- Control overlay with matching border radius -->
             <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 rounded-[2rem] border-2 border-sky-400/80" />
@@ -980,7 +1137,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <span :class="[videoStreaming ? 'icon-[solar--pause-circle-bold-duotone]' : 'icon-[solar--video-frame-play-horizontal-bold-duotone]', 'size-5']" />
               <span>{{ videoStreaming ? '停止实时视频流' : '启动实时视频流' }}</span>
             </button>
-            <p class="text-xs leading-5 text-slate-500 dark:text-slate-400">实时视频流由手机端录屏后推送；截图流仍会在进入页面后默认工作。</p>
+            <p class="text-xs leading-5 text-slate-500 dark:text-slate-400">实时视频流由手机端录屏后推送；开启后会暂停截图流，停止后可手动重新开启截图流。</p>
           </div>
         </div>
         <div class="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
