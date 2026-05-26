@@ -76,12 +76,18 @@ interface AdbInstallResult {
   message?: string
 }
 
-const isWirelessAdb = (serial: string) => serial.includes(':') || serial.includes('_adb-tls-connect')
+const isWirelessAdb = (serial: string) => {
+  const value = serial.trim().toLowerCase()
+  return value.includes(':') ||
+    value.startsWith('adb-') ||
+    value.includes('_adb-tls-connect') ||
+    value.includes('._adb-tls-connect')
+}
 const alreadyAddedSerials = computed(() => new Set(devices.devices.map((d) => d.temporaryAdbSerial).filter(Boolean)))
 const connectedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && !isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const connectedWireless = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'device' && isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const unauthorizedUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'unauthorized' && !isWirelessAdb(device.serial)))
-const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'offline'))
+const offlineUsb = computed(() => (devices.adbScan?.devices ?? []).filter((device) => device.state === 'offline' && !isWirelessAdb(device.serial)))
 // Filtered scan list for USB ADB section: only USB devices, excluding already-added ones
 const usbScanList = computed(() => (devices.adbScan?.devices ?? []).filter((device) => !isWirelessAdb(device.serial) && !alreadyAddedSerials.value.has(device.serial)))
 const hasAnyScan = computed(() => Boolean(devices.adbScan))
@@ -582,7 +588,7 @@ onUnmounted(stopScanTimer)
           <span class="font-medium">伴侣APK会自动安装在连接ADB的设备上。</span>
         </div>
 
-        <div class="grid min-h-0 flex-1 lg:grid-cols-[260px_1fr]">
+        <div class="grid min-h-0 min-w-0 flex-1 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside class="border-b border-slate-200 p-3 dark:border-slate-800 lg:border-b-0 lg:border-r">
             <button
               class="mb-2 flex h-12 w-full items-center gap-3 rounded-md px-3 text-left text-sm transition-all duration-300"
@@ -610,7 +616,7 @@ onUnmounted(stopScanTimer)
             </button>
           </aside>
 
-          <div class="min-h-0 overflow-auto p-5">
+          <div class="min-h-0 min-w-0 overflow-auto p-5">
             <div v-if="activeMode === 'usb'" class="grid gap-4 xl:grid-cols-[1fr_360px]">
               <div class="space-y-4">
                 <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
@@ -673,7 +679,7 @@ onUnmounted(stopScanTimer)
                 </div>
               </div>
 
-              <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+              <div class="min-w-0 overflow-hidden rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                 <h3 class="mb-3 font-semibold">等待连接</h3>
                 <div class="space-y-3 text-sm">
                   <div class="flex items-center justify-between"><span>已授权设备</span><strong>{{ connectedUsb.length }}</strong></div>
@@ -719,18 +725,18 @@ onUnmounted(stopScanTimer)
                       <li>4. 把弹窗里的 IP 地址、配对端口和 6 位配对码填到下方。</li>
                     </ol>
                   </div>
-                  <div class="grid gap-3 md:grid-cols-[1fr_140px_140px]">
-                    <label class="grid gap-2 text-sm">
+                  <div class="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(120px,140px)_minmax(120px,140px)]">
+                    <label class="grid min-w-0 gap-2 text-sm">
                       <span class="font-medium">IP 地址</span>
-                      <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
+                      <input v-model="pairHost" class="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
                     </label>
-                    <label class="grid gap-2 text-sm">
+                    <label class="grid min-w-0 gap-2 text-sm">
                       <span class="font-medium">配对端口</span>
-                      <input v-model="pairPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="弹窗端口" />
+                      <input v-model="pairPort" class="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="弹窗端口" />
                     </label>
-                    <label class="grid gap-2 text-sm">
+                    <label class="grid min-w-0 gap-2 text-sm">
                       <span class="font-medium">配对码</span>
-                      <input v-model="pairCode" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="6 位数字" />
+                      <input v-model="pairCode" class="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="6 位数字" />
                     </label>
                   </div>
                   <div class="flex flex-wrap gap-3">
@@ -749,14 +755,14 @@ onUnmounted(stopScanTimer)
                   <div class="rounded-lg bg-sky-50 p-4 text-sm text-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
                     配对成功后，回到手机“无线调试”主页面，查看“IP 地址和端口”。这里的端口通常和配对弹窗里的端口不同，只有完成连接后设备才会出现在列表中。
                   </div>
-                  <div class="grid gap-3 md:grid-cols-[1fr_150px_auto]">
-                    <label class="grid gap-2 text-sm">
+                  <div class="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(120px,150px)_auto]">
+                    <label class="grid min-w-0 gap-2 text-sm">
                       <span class="font-medium">IP 地址</span>
-                      <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
+                      <input v-model="pairHost" class="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="例如 192.168.3.123" />
                     </label>
-                    <label class="grid gap-2 text-sm">
+                    <label class="grid min-w-0 gap-2 text-sm">
                       <span class="font-medium">连接端口</span>
-                      <input v-model="pairConnectPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="主页面端口" />
+                      <input v-model="pairConnectPort" class="h-10 min-w-0 rounded-md border border-slate-300 bg-white px-3 text-sm transition-all duration-300 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 dark:border-slate-700 dark:bg-slate-950 dark:focus:ring-sky-950" placeholder="主页面端口" />
                     </label>
                     <div class="flex items-end">
                       <button class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60 md:w-auto" :disabled="!canRunPairConnect" @click="runPairConnectOnly">

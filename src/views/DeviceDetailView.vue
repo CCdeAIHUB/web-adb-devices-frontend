@@ -72,7 +72,7 @@ const canUseAdb = computed(() => {
   return adbReadyStates.has(current.displayState)
 })
 const canUseApk = computed(() => device.value?.internalState === 'Online' || device.value?.internalState === 'PermissionRequired')
-const canUseScreenshotStream = computed(() => canUseAdb.value)
+const canUseScreenshotStream = computed(() => canUseAdb.value || canUseApk.value)
 const canUseScreenPreview = computed(() => canUseScreenshotStream.value || canUseApk.value)
 const stateLabel = computed(() => {
   const current = device.value
@@ -370,8 +370,14 @@ function buildFrameUrl(source: 'screenshot' | 'video') {
   const params = new URLSearchParams({ t: String(Date.now()) })
   if (source === 'video') {
     params.set('source', 'apk')
-  } else if (streamQuality.value === 'jpeg') {
-    params.set('format', 'jpeg')
+  } else {
+    if (canUseApk.value) {
+      params.set('source', 'auto')
+      params.set('resolution', videoResolution.value)
+    }
+    if (streamQuality.value === 'jpeg') {
+      params.set('format', 'jpeg')
+    }
   }
   return `${controlUrl('control/screenshot')}?${params.toString()}`
 }
@@ -1066,8 +1072,8 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
             <!-- Stream config -->
             <LiquidSelect v-model="streamInterval" class="stream-select min-w-28" :options="streamIntervalOptions" />
             <div class="stream-control stream-segment">
-              <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'png'">PNG</button>
-              <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="streamQuality = 'jpeg'">JPEG</button>
+              <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseScreenshotStream" @click="streamQuality = 'png'">PNG</button>
+              <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseScreenshotStream" @click="streamQuality = 'jpeg'">JPEG</button>
             </div>
             <button class="stream-control stream-button" :disabled="frameLoading || !canUseScreenshotStream || videoStreaming" @click="refreshScreenshot('screenshot', true)">
               <span class="icon-[solar--refresh-bold-duotone] size-5" />
