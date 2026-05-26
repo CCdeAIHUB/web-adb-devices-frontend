@@ -96,8 +96,16 @@ function resetPreviewTimer() {
   }
 }
 
+async function refreshDevices() {
+  try {
+    await devices.scanAdb()
+  } catch {
+    await devices.load()
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([devices.load(), loadSettings()])
+  await Promise.all([refreshDevices(), loadSettings()])
 })
 onUnmounted(() => {
   if (previewTimer !== undefined) window.clearInterval(previewTimer)
@@ -110,9 +118,9 @@ onUnmounted(() => {
       <h1 class="text-xl font-semibold">总览</h1>
       <p class="mt-1 text-sm text-slate-500">设备状态、筛选和低频预览集中查看。</p>
       <template #actions>
-        <button class="glass-button" @click="devices.load">
+        <button class="glass-button" @click="refreshDevices">
           <span class="icon-[solar--refresh-bold-duotone] size-5" />
-          <span>刷新</span>
+          <span>{{ devices.scanning ? '扫描中' : '刷新' }}</span>
         </button>
         <RouterLink class="glass-button" to="/help">
           <span class="icon-[solar--question-circle-bold-duotone] size-5" />

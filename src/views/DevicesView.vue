@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useDeviceStore, type AdbScannedDevice, type DeviceRecord } from '@/stores/devices'
+import { useDeviceStore, type AdbScanResponse, type AdbScannedDevice, type DeviceRecord } from '@/stores/devices'
 import { ApiError, api } from '@/api/client'
 import LiquidSelect from '@/components/LiquidSelect.vue'
 import PageHeader from '@/components/PageHeader.vue'
@@ -13,6 +13,7 @@ const activeMode = ref<'usb' | 'pair' | 'tcpip'>('usb')
 const pairHost = ref('')
 const pairPort = ref('')
 const pairCode = ref('')
+const pairConnectPort = ref('')
 const tcpipHost = ref('')
 const tcpipPort = ref('5555')
 const commandRunning = ref(false)
@@ -33,6 +34,8 @@ interface AdbCommandResult {
   stdout: string
   stderr: string
   errorCode?: string
+  requiresConnect?: boolean
+  scan?: AdbScanResponse | null
 }
 
 interface AdbMirrorProbe {
@@ -109,11 +112,21 @@ function adbStateText(device: AdbScannedDevice) {
 }
 
 async function refreshAll() {
-  await devices.load()
+  try {
+    await devices.scanAdb()
+  } catch {
+    await devices.load()
+  }
 }
 
 async function scanAdb() {
   await devices.scanAdb()
+}
+
+function applyAdbScan(scan?: AdbScanResponse | null) {
+  if (!scan) return
+  devices.adbScan = scan
+  devices.devices = scan.records
 }
 
 function notify(message: string, type: 'success' | 'error' | 'info' = 'info', target?: string) {
@@ -179,11 +192,8 @@ function localizeApiError(error: unknown, fallback: string) {
 }
 
 function formatCommandSuccess(prefix: string, stdout: string, suffix = '') {
-  if (stdout) {
-    return `${prefix} 原始信息：${stdout}`
-  }
-
-  return `${prefix}${suffix}`
+  const message = stdout.trim() ? `${prefix} 原始信息：${stdout.trim()}` : prefix
+  return suffix ? `${message} ${suffix}` : message
 }
 
 async function loadEnvironment() {
@@ -239,13 +249,17 @@ async function runPair() {
   try {
     const result = await api<AdbCommandResult>('/api/devices/adb/pair', {
       method: 'POST',
-      body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value }),
+      body: JSON.stringify({ host: pairHost.value, port: pairPort.value, pairingCode: pairCode.value, connectPort: pairConnectPort.value }),
     })
+    applyAdbScan(result.scan)
+    if (!result.scan) {
+      await scanAdb()
+    }
     commandMessage.value = result.success
-      ? formatCommandSuccess('配对命令已执行。', result.stdout, '请使用无线调试主页面显示的 IP 和连接端口继续连接。')
+      ? result.requiresConnect
+        ? formatCommandSuccess('配对已完成。', result.stdout, '还需要填写无线调试主页面显示的连接端口，然后点击“仅连接”。配对成功本身不会让设备出现在列表中。')
+        : formatCommandSuccess('配对并连接已完成。', result.stdout)
       : localizeAdbError(result)
-    await scanAdb()
-    // Check if pairing resulted in a new device being added - auto close and notify
     checkForNewDevice()
   } catch (error) {
     commandMessage.value = localizeApiError(error, '连接错误：无线配对请求发送失败。')
@@ -255,16 +269,26 @@ async function runPair() {
 }
 
 async function runConnect() {
+  await connectWireless(tcpipHost.value, tcpipPort.value, '连接命令已执行。')
+}
+
+async function runPairConnectOnly() {
+  await connectWireless(pairHost.value, pairConnectPort.value, '连接命令已执行。')
+}
+
+async function connectWireless(host: string, port: string, successPrefix: string) {
   commandRunning.value = true
   commandMessage.value = ''
   try {
     const result = await api<AdbCommandResult>('/api/devices/adb/connect', {
       method: 'POST',
-      body: JSON.stringify({ host: tcpipHost.value, port: tcpipPort.value }),
+      body: JSON.stringify({ host, port }),
     })
-    commandMessage.value = result.success ? formatCommandSuccess('连接命令已执行。', result.stdout) : localizeAdbError(result)
-    await scanAdb()
-    // Check if connection resulted in a new device - auto close and notify
+    applyAdbScan(result.scan)
+    if (!result.scan) {
+      await scanAdb()
+    }
+    commandMessage.value = result.success ? formatCommandSuccess(successPrefix, result.stdout) : localizeAdbError(result)
     checkForNewDevice()
   } catch (error) {
     commandMessage.value = localizeApiError(error, '连接错误：无线连接请求发送失败。')
@@ -650,15 +674,25 @@ onUnmounted(stopScanTimer)
             <div v-else-if="activeMode === 'pair'" class="space-y-4">
               <div class="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
                 <h3 class="mb-3 font-semibold">Android 11+ 无线配对</h3>
-                <div class="grid gap-3 md:grid-cols-3">
+                <div class="grid gap-3 md:grid-cols-[1fr_120px_120px_120px]">
                   <input v-model="pairHost" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="IP 地址" />
                   <input v-model="pairPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对端口" />
                   <input v-model="pairCode" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="配对码" />
+                  <input v-model="pairConnectPort" class="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="连接端口" />
                 </div>
-                <button class="mt-4 inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 disabled:opacity-60" :disabled="commandRunning || !environment?.adb.exists" @click="runPair">
-                  <span class="icon-[solar--wi-fi-router-outline] size-5" />
-                  <span>开始配对</span>
-                </button>
+                <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">
+                  配对端口来自“使用配对码配对”弹窗；连接端口来自“无线调试”主页面，两个端口通常不同。只有连接完成后，设备才会出现在列表中。
+                </p>
+                <div class="mt-4 flex flex-wrap gap-3">
+                  <button class="inline-flex h-10 items-center gap-2 rounded-md bg-sky-500 px-4 text-sm font-medium text-white transition-all duration-300 hover:bg-sky-600 disabled:opacity-60" :disabled="commandRunning || !environment?.adb.exists" @click="runPair">
+                    <span class="icon-[solar--wi-fi-router-outline] size-5" />
+                    <span>{{ pairConnectPort ? '配对并连接' : '开始配对' }}</span>
+                  </button>
+                  <button class="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-all duration-300 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-800 dark:hover:bg-sky-950" :disabled="commandRunning || !environment?.adb.exists || !pairHost || !pairConnectPort" @click="runPairConnectOnly">
+                    <span class="icon-[solar--link-circle-outline] size-5" />
+                    <span>仅连接</span>
+                  </button>
+                </div>
                 <p v-if="commandMessage" class="mt-3 rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">{{ commandMessage }}</p>
               </div>
             </div>
