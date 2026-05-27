@@ -13,6 +13,7 @@ const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
+const teleportTarget = ref<HTMLElement | 'body'>('body')
 const selected = computed(() => props.options.find((item) => item.value === props.modelValue))
 const selectedLabel = computed(() => selected.value?.label ?? (props.modelValue ? props.modelValue : props.placeholder || '请选择'))
 
@@ -30,6 +31,7 @@ function closeOnOutside(event: MouseEvent) {
 
 function updatePosition() {
   if (!root.value) return
+  teleportTarget.value = (document.fullscreenElement as HTMLElement | null) ?? 'body'
   const rect = root.value.getBoundingClientRect()
   const gap = 8
   const preferredHeight = 288
@@ -55,10 +57,12 @@ watch(open, (value) => {
     document.addEventListener('mousedown', closeOnOutside)
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition, true)
+    document.addEventListener('fullscreenchange', updatePosition)
   } else {
     document.removeEventListener('mousedown', closeOnOutside)
     window.removeEventListener('resize', updatePosition)
     window.removeEventListener('scroll', updatePosition, true)
+    document.removeEventListener('fullscreenchange', updatePosition)
   }
 })
 
@@ -66,6 +70,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('mousedown', closeOnOutside)
   window.removeEventListener('resize', updatePosition)
   window.removeEventListener('scroll', updatePosition, true)
+  document.removeEventListener('fullscreenchange', updatePosition)
 })
 </script>
 
@@ -75,7 +80,7 @@ onBeforeUnmount(() => {
       <span class="truncate">{{ selectedLabel }}</span>
       <span class="icon-[solar--alt-arrow-down-bold-duotone] size-5 shrink-0 transition-transform" :class="open ? 'rotate-180' : ''" />
     </button>
-    <Teleport to="body">
+    <Teleport :to="teleportTarget">
       <Transition name="liquid-select">
         <div v-if="open" ref="menu" class="liquid-select-menu" :style="menuStyle">
           <button

@@ -332,6 +332,7 @@ async function saveProvider() {
     resetProviderForm()
     await loadProviders()
     await loadSettings()
+    window.dispatchEvent(new CustomEvent('wad:agent-providers-changed'))
     notify(isEditing ? 'AI 模型已修改并验证通过。' : 'AI 模型已添加并验证通过。', 'success')
   } catch (error) {
     providerMessage.value = error instanceof ApiError ? error.message : '模型保存失败，请检查配置。'
@@ -344,6 +345,7 @@ async function saveProvider() {
 async function deleteProvider(providerId: string) {
   await api(`/api/agent/providers/${providerId}`, { method: 'DELETE' })
   await loadProviders()
+  window.dispatchEvent(new CustomEvent('wad:agent-providers-changed'))
   notify('AI 模型已删除。', 'success')
 }
 

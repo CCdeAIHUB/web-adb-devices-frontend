@@ -176,6 +176,8 @@ const apkBannerDismissed = ref(false)
 const inputText = ref('')
 const pointerDown = ref<{ x: number; y: number; time: number } | null>(null)
 const liveScreen = ref({ width: 1080, height: 2400 })
+const controlScreen = ref({ width: 1080, height: 2400 })
+const lastFrameSource = ref('')
 const frameLoading = ref(false)
 let refreshTimer: ReturnType<typeof window.setInterval> | undefined
 let frameAbortController: AbortController | undefined
@@ -208,7 +210,13 @@ const screenSize = computed(() => {
   const h = liveScreen.value.height || device.value?.screenHeight || 2400
   return { width: w, height: h }
 })
+const controlScreenSize = computed(() => {
+  const w = controlScreen.value.width || device.value?.screenWidth || screenSize.value.width
+  const h = controlScreen.value.height || device.value?.screenHeight || screenSize.value.height
+  return { width: w, height: h }
+})
 const isLandscape = computed(() => screenSize.value.width > screenSize.value.height)
+const screenshotRateLocked = computed(() => (canUseAdb.value && !canUseApk.value) || (screenshotStreaming.value && lastFrameSource.value === 'adb'))
 const hasKnownCompanionApk = computed(() => Boolean(device.value?.apkVersion || bundledApkInstalled.value))
 const companionActionText = computed(() => hasKnownCompanionApk.value ? '重新安装伴侣APK' : '安装伴侣APK')
 const showApkOfflineBanner = computed(() => {
@@ -382,7 +390,7 @@ function buildFrameUrl(source: 'screenshot' | 'video') {
   return `${controlUrl('control/screenshot')}?${params.toString()}`
 }
 
-function scheduleNextFrame(source: 'screenshot' | 'video', delay = streamIntervalMs()) {
+function scheduleNextFrame(source: 'screenshot' | 'video', delay = source === 'video' ? 300 : streamIntervalMs()) {
   stopTimer()
   if (activeTab.value !== 'control' || !isSourceStreaming(source)) {
     return
@@ -457,6 +465,13 @@ async function refreshScreenshot(source: 'screenshot' | 'video' = videoStreaming
     try {
       const size = await decodeImage(nextUrl)
       liveScreen.value = size
+      const sourceWidth = Number.parseInt(response.headers.get('X-WAD-Screen-Width') || '', 10)
+      const sourceHeight = Number.parseInt(response.headers.get('X-WAD-Screen-Height') || '', 10)
+      controlScreen.value = {
+        width: Number.isFinite(sourceWidth) && sourceWidth > 0 ? sourceWidth : size.width,
+        height: Number.isFinite(sourceHeight) && sourceHeight > 0 ? sourceHeight : size.height,
+      }
+      lastFrameSource.value = response.headers.get('X-WAD-Screen-Source') || (source === 'video' ? 'apk-video' : 'adb')
       setScreenObjectUrl(nextUrl)
       if (message.value.startsWith('截图流刷新失败') || message.value.startsWith('实时画面传输失败') || message.value.startsWith('正在等待手机端推送')) {
         message.value = ''
@@ -580,9 +595,10 @@ watch(streamQuality, () => {
 function pointFromEvent(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
+  const targetSize = controlScreenSize.value
   return {
-    x: Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * screenSize.value.width),
-    y: Math.round(Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) * screenSize.value.height),
+    x: Math.round(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * targetSize.width),
+    y: Math.round(Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) * targetSize.height),
   }
 }
 
@@ -895,6 +911,10 @@ watch(device, (current) => {
     adbSerial: current.temporaryAdbSerial || lastKnownIdentity.value.adbSerial,
     androidId: current.androidId || lastKnownIdentity.value.androidId,
   }
+  if (!screenshotUrl.value && current.screenWidth > 0 && current.screenHeight > 0) {
+    liveScreen.value = { width: current.screenWidth, height: current.screenHeight }
+    controlScreen.value = { width: current.screenWidth, height: current.screenHeight }
+  }
 }, { immediate: true })
 
 // Keep the default screenshot stream aligned with ADB availability.
@@ -975,7 +995,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
           <span class="rounded-full border border-slate-200 bg-white/70 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">{{ stateLabel }}</span>
           <span :class="canUseAdb ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'" class="rounded-full px-2.5 py-1 text-xs font-medium">ADB {{ canUseAdb ? '可用' : '不可用' }}</span>
           <span :class="canUseApk ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'" class="rounded-full px-2.5 py-1 text-xs font-medium">APK {{ canUseApk ? '在线' : '未在线' }}</span>
-          <span>{{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ screenSize.width }} x {{ screenSize.height }}</span>
+          <span>{{ device?.temporaryAdbSerial || '暂无 ADB serial' }} · {{ controlScreenSize.width }} x {{ controlScreenSize.height }}</span>
         </div>
         <template #actions>
           <button class="glass-button" :disabled="busy || !canUseAdb" @click="installBundledApk">
@@ -1070,7 +1090,7 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
               <button :class="transportMode === 'udp' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseAdb" @click="transportMode = 'udp'">UDP</button>
             </div>
             <!-- Stream config -->
-            <LiquidSelect v-model="streamInterval" class="stream-select min-w-28" :options="streamIntervalOptions" />
+            <LiquidSelect v-model="streamInterval" class="stream-select min-w-28" :options="streamIntervalOptions" :disabled="screenshotRateLocked" />
             <div class="stream-control stream-segment">
               <button :class="streamQuality === 'png' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseScreenshotStream" @click="streamQuality = 'png'">PNG</button>
               <button :class="streamQuality === 'jpeg' ? 'stream-segment-active' : 'stream-segment-idle'" :disabled="!canUseScreenshotStream" @click="streamQuality = 'jpeg'">JPEG</button>
@@ -1095,11 +1115,11 @@ function stopPermissionTimer() { if (permissionTimer !== undefined) { clearInter
         <div class="flex min-h-[560px] items-center justify-center bg-slate-950 p-4" :class="[isFullscreen ? 'h-[calc(100vh-56px)]' : '']">
           <div
             class="relative overflow-hidden rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl"
-            :class="[isLandscape ? 'max-h-[70vh] w-full max-w-[900px]' : 'max-h-[76vh] w-full max-w-[420px]', isFullscreen ? 'max-h-[calc(100vh-80px)] max-w-[520px]' : '']"
+            :class="[isFullscreen ? 'max-h-[calc(100vh-96px)] w-full max-w-[calc(100vw-96px)]' : isLandscape ? 'max-h-[70vh] w-full max-w-[900px]' : 'max-h-[76vh] w-full max-w-[420px]']"
             :style="{ aspectRatio: `${screenSize.width} / ${screenSize.height}` }"
             @pointerdown="onPointerDown" @pointerup="onPointerUp"
           >
-            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none object-fill rounded-[2rem]" draggable="false" alt="设备屏幕" />
+            <img v-if="screenshotUrl" :src="screenshotUrl" class="h-full w-full select-none rounded-[2rem] object-contain" draggable="false" alt="设备屏幕" />
             <div v-else class="flex h-full items-center justify-center px-8 text-center text-sm text-slate-400 rounded-[2rem]">{{ screenPlaceholderText }}</div>
             <!-- Control overlay with matching border radius -->
             <div v-if="controlEnabled" class="pointer-events-none absolute inset-0 rounded-[2rem] border-2 border-sky-400/80" />

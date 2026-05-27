@@ -217,6 +217,62 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#039;')
 }
 
+function renderMarkdown(value: string) {
+  const blocks: string[] = []
+  let html = escapeHtml(value).replace(/```([\s\S]*?)```/g, (_match: string, code: string) => {
+    const token = `@@CODE_BLOCK_${blocks.length}@@`
+    blocks.push(`<pre><code>${code.trim()}</code></pre>`)
+    return token
+  })
+
+  html = html.replace(/((?:^\|.*\|\s*\n?){2,})/gm, (block: string) => renderMarkdownTable(block))
+
+  html = html
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)(\n<li>.*<\/li>)+/g, (match: string) => `<ul>${match}</ul>`)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+?)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+
+  html = `<p>${html}</p>`
+    .replace(/<p>(<h[1-3]>)/g, '$1')
+    .replace(/(<\/h[1-3]>)<\/p>/g, '$1')
+    .replace(/<p>(<ul>)/g, '$1')
+    .replace(/(<\/ul>)<\/p>/g, '$1')
+    .replace(/<p>(<pre>)/g, '$1')
+    .replace(/(<\/pre>)<\/p>/g, '$1')
+    .replace(/<p>(<div class="markdown-table-wrap">)/g, '$1')
+    .replace(/(<\/div>)<\/p>/g, '$1')
+
+  blocks.forEach((block, index) => {
+    html = html.replace(`@@CODE_BLOCK_${index}@@`, block)
+  })
+  return html
+}
+
+function renderMarkdownTable(block: string) {
+  const rows = block.trim().split(/\r?\n/).map((line) =>
+    line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim()),
+  )
+  if (rows.length < 2 || !rows[1].every((cell) => /^:?-{3,}:?$/.test(cell))) {
+    return block
+  }
+
+  const header = rows[0]
+  const body = rows.slice(2)
+  return [
+    '<div class="markdown-table-wrap"><table>',
+    `<thead><tr>${header.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>`,
+    `<tbody>${body.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>`,
+    '</table></div>',
+  ].join('')
+}
+
 function exportConversationPdf(conversation: Conversation) {
   const popup = window.open('', '_blank', 'width=860,height=980')
   if (!popup) {
@@ -265,8 +321,11 @@ async function load() {
 }
 
 async function loadProviders() {
+  const previous = selectedProvider.value
   providers.value = await api<AiProvider[]>('/api/agent/providers')
-  selectedProvider.value = usableProviders.value[0]?.id ?? ''
+  selectedProvider.value = usableProviders.value.some((provider) => provider.id === previous)
+    ? previous
+    : usableProviders.value[0]?.id ?? ''
 }
 
 function toggleDevice(deviceId: string) {
@@ -339,6 +398,10 @@ function onDocumentClick(event: MouseEvent) {
   }
 }
 
+function onProvidersChanged() {
+  void loadProviders()
+}
+
 watch(selectedDevices, () => {
   if (!activeConversation.value) return
   activeConversation.value.selectedDevices = [...selectedDevices.value]
@@ -349,11 +412,15 @@ onMounted(() => {
   load()
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  window.addEventListener('focus', onProvidersChanged)
+  window.addEventListener('wad:agent-providers-changed', onProvidersChanged)
   document.addEventListener('click', onDocumentClick)
 })
 if (typeof window !== 'undefined') {
   onUnmounted(() => {
     window.removeEventListener('resize', checkMobile)
+    window.removeEventListener('focus', onProvidersChanged)
+    window.removeEventListener('wad:agent-providers-changed', onProvidersChanged)
     document.removeEventListener('click', onDocumentClick)
     stopVoice()
   })
@@ -442,14 +509,15 @@ if (typeof window !== 'undefined') {
           <div
             v-for="(message, index) in messages"
             :key="index"
-            class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm shadow-sm"
+            class="max-w-[85%] break-words rounded-2xl px-4 py-3 text-sm shadow-sm"
             :class="[
               message.role === 'user'
                 ? 'ml-auto bg-sky-500/85 text-white'
-                : 'mr-auto border border-white/45 bg-white/55 text-slate-700 backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-200',
+                : 'markdown-body mr-auto border border-white/45 bg-white/55 text-slate-700 backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-200',
             ]"
           >
-            {{ message.text }}
+            <span v-if="message.role === 'user'" class="whitespace-pre-wrap">{{ message.text }}</span>
+            <span v-else v-html="renderMarkdown(message.text)" />
           </div>
         </div>
         <div v-if="running" class="mt-3 inline-flex items-center gap-3 rounded-2xl border border-white/45 bg-white/55 px-4 py-3 text-sm text-slate-600 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
@@ -609,13 +677,16 @@ if (typeof window !== 'undefined') {
         <div
           v-for="(message, index) in messages"
           :key="index"
-          class="max-w-[85%] break-words whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm"
+          class="max-w-[85%] break-words rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm"
           :class="[
             message.role === 'user'
               ? 'ml-auto bg-sky-500 text-white'
-              : 'mr-auto border border-slate-200/60 bg-white/80 backdrop-blur-md text-slate-700 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-200'
+              : 'markdown-body mr-auto border border-slate-200/60 bg-white/80 backdrop-blur-md text-slate-700 dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-200'
           ]"
-        >{{ message.text }}</div>
+        >
+          <span v-if="message.role === 'user'" class="whitespace-pre-wrap">{{ message.text }}</span>
+          <span v-else v-html="renderMarkdown(message.text)" />
+        </div>
       </div>
       <div v-if="running" class="mt-3 inline-flex items-center gap-2 rounded-2xl border border-slate-200/60 bg-white/80 px-3.5 py-2.5 text-xs shadow-sm backdrop-blur-md dark:border-slate-700/50 dark:bg-slate-800/60 dark:text-slate-300">
         <span>AI 正在思考</span>
@@ -710,4 +781,22 @@ if (typeof window !== 'undefined') {
 .dropdown-leave-active { transition: all 150ms ease-in; }
 .dropdown-enter-from { opacity: 0; transform: translateY(-8px) scale(0.97); }
 .dropdown-leave-to { opacity: 0; transform: translateY(-4px) scale(0.98); }
+
+.markdown-body :deep(p) { margin: 0.35rem 0; line-height: 1.7; }
+.markdown-body :deep(p:first-child) { margin-top: 0; }
+.markdown-body :deep(p:last-child) { margin-bottom: 0; }
+.markdown-body :deep(h1), .markdown-body :deep(h2), .markdown-body :deep(h3) { margin: 0.55rem 0 0.35rem; font-weight: 700; line-height: 1.35; }
+.markdown-body :deep(h1) { font-size: 1rem; }
+.markdown-body :deep(h2) { font-size: 0.95rem; }
+.markdown-body :deep(h3) { font-size: 0.9rem; }
+.markdown-body :deep(ul) { margin: 0.4rem 0; padding-left: 1.1rem; list-style: disc; }
+.markdown-body :deep(li) { margin: 0.15rem 0; }
+.markdown-body :deep(code) { border-radius: 0.35rem; background: rgba(15, 23, 42, 0.08); padding: 0.08rem 0.28rem; font-size: 0.9em; }
+.markdown-body :deep(pre) { margin: 0.5rem 0; max-width: 100%; overflow: auto; border-radius: 0.7rem; background: #0f172a; padding: 0.75rem; color: #e2e8f0; }
+.markdown-body :deep(pre code) { background: transparent; padding: 0; color: inherit; }
+.markdown-body :deep(a) { color: #0284c7; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-body :deep(.markdown-table-wrap) { margin: 0.5rem 0; max-width: 100%; overflow: auto; border-radius: 0.7rem; border: 1px solid rgba(148, 163, 184, 0.35); }
+.markdown-body :deep(table) { width: 100%; border-collapse: collapse; font-size: 0.92em; }
+.markdown-body :deep(th), .markdown-body :deep(td) { border-bottom: 1px solid rgba(148, 163, 184, 0.25); padding: 0.45rem 0.55rem; text-align: left; vertical-align: top; }
+.markdown-body :deep(th) { background: rgba(14, 165, 233, 0.08); font-weight: 700; }
 </style>
